@@ -156,9 +156,17 @@ validate_database_url
 
 scripts/render-openclaw-config.sh
 
+if [[ "$(uname -s)" == "Linux" && "$(id -u)" -eq 0 ]]; then
+  chown -R 1000:1000 openclaw/config openclaw/workspace
+fi
+
 if [[ "$prepare_only" -eq 1 ]]; then
   printf 'Prepared LifeOS runtime directories and validated .env placeholders.\n'
   exit 0
 fi
 
-docker compose --env-file .env up -d --build openclue-gateway lifeos-db lifeos-api
+docker compose --env-file .env --profile backup up -d --build \
+  openclue-gateway \
+  lifeos-db \
+  lifeos-api \
+  lifeos-backup

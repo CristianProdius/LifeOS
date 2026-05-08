@@ -146,53 +146,41 @@ Rules:
 
 ## VPS Deployment
 
-Recommended shape:
+Docker Compose deployment:
 
-1. Create a dedicated Linux user, for example `openclaw`.
-2. Install the OpenClaw runtime and its dependencies.
-3. Place this repository at `/opt/lifeos`.
-4. Store secrets in an environment file readable only by the runtime user:
-
-```bash
-sudo install -o openclaw -g openclaw -m 600 /dev/null /etc/openclaw-lifeos.env
-```
-
-5. Put the exported variables from this document into `/etc/openclaw-lifeos.env`.
-6. Run the bot in long polling mode unless a Telegram webhook is required.
-7. If using webhook mode, terminate HTTPS at a reverse proxy and set `TELEGRAM_WEBHOOK_URL`.
-8. Run OpenClaw under systemd.
-
-Example systemd unit:
-
-```ini
-[Unit]
-Description=OpenClaw OpenClue LifeOS bot
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=openclaw
-Group=openclaw
-WorkingDirectory=/opt/lifeos/openclaw
-EnvironmentFile=/etc/openclaw-lifeos.env
-ExecStart=/usr/local/bin/openclaw run --config /opt/lifeos/openclaw/config/openclaw.template.json --workspace /opt/lifeos/openclaw/workspace
-Restart=always
-RestartSec=5
-NoNewPrivileges=true
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Operational checks:
+1. Place this repository at `/opt/lifeos`.
+2. Copy `.env.example` to `.env`.
+3. Fill real values for `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_ID`, `TELEGRAM_ALLOWED_GROUP_ID`, all `TELEGRAM_TOPIC_*_ID` values, `OPENCLAW_GATEWAY_TOKEN`, `LIFEOS_API_TOKEN`, and `POSTGRES_PASSWORD`.
+4. Keep `DATABASE_URL` in sync with the Postgres password.
+5. Start the stack:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now openclaw-lifeos
-sudo systemctl status openclaw-lifeos
-journalctl -u openclaw-lifeos -f
+cd /opt/lifeos
+./scripts/bootstrap.sh
 ```
+
+The bootstrap script validates secrets, renders `openclaw/config/openclaw.json`, fixes OpenClaw bind-mount ownership on Linux root deployments, starts the gateway, starts LifeOS API/Postgres, and starts the backup worker.
+
+OpenClaw also needs model/provider authentication. Use the Control UI at `http://127.0.0.1:18789/` over an SSH tunnel or run the official onboarding/channel commands against the Docker gateway.
+
+Health checks:
+
+```bash
+TOKEN="$(grep '^LIFEOS_API_TOKEN=' /opt/lifeos/.env | cut -d= -f2-)"
+curl -fsS -H "X-API-Key: $TOKEN" http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:18789/healthz
+docker compose ps
+```
+
+Telegram channel setup after the gateway is running:
+
+```bash
+cd /opt/lifeos
+TELEGRAM_BOT_TOKEN="$(grep '^TELEGRAM_BOT_TOKEN=' .env | cut -d= -f2-)"
+docker compose run --rm openclaw-cli channels add --channel telegram --token "$TELEGRAM_BOT_TOKEN"
+```
+
+If the Control UI is needed from your laptop, use an SSH tunnel instead of exposing the port publicly: `ssh -L 18789:127.0.0.1:18789 root@server`.
 
 ## Security Notes
 

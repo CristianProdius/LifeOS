@@ -26,6 +26,36 @@ services:
       - ./openclaw/workspace:/home/node/.openclaw/workspace
     networks:
       - lifeos-edge
+    depends_on:
+      lifeos-api:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+
+  openclaw-cli:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    profiles:
+      - tools
+    environment:
+      NODE_ENV: production
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?set OPENCLAW_GATEWAY_TOKEN in .env}
+      OPENCLAW_TZ: ${OPENCLAW_TZ:-UTC}
+      OPENCLAW_TIMEZONE: ${OPENCLAW_TIMEZONE:-${OPENCLAW_TZ:-UTC}}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?set TELEGRAM_BOT_TOKEN in .env}
+      LIFEOS_API_BASE_URL: ${LIFEOS_API_BASE_URL:-http://lifeos-api:8080}
+      LIFEOS_API_TOKEN: ${LIFEOS_API_TOKEN:?set LIFEOS_API_TOKEN in .env}
+      LIFEOS_API_TIMEOUT_MS: ${LIFEOS_API_TIMEOUT_MS:-10000}
+      TZ: ${OPENCLAW_TZ:-UTC}
+    volumes:
+      - ./openclaw/config:/home/node/.openclaw
+      - ./openclaw/workspace:/home/node/.openclaw/workspace
+    network_mode: "service:openclue-gateway"
+    depends_on:
+      openclue-gateway:
+        condition: service_started
+    entrypoint:
+      - node
+      - dist/index.js
     security_opt:
       - no-new-privileges:true
 
