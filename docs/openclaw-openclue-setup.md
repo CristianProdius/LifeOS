@@ -90,6 +90,15 @@ Admin
 8. Set `TELEGRAM_ALLOWED_GROUP_ID` and the `TELEGRAM_TOPIC_*_ID` variables.
 9. Test with an allowed user and one disallowed user before relying on the bot.
 
+To discover IDs after the bot is added, send one message in each LifeOS forum topic, then run:
+
+```bash
+cd /opt/lifeos
+./scripts/telegram-discover.sh
+```
+
+The script prints `chat_id`, `from_id`, and `message_thread_id` values without printing the bot token.
+
 Topic ownership:
 
 - Daily: morning, midday, evening, readiness, blockers, and daily scorecards.
