@@ -1,0 +1,28 @@
+"""initial lifeos schema
+
+Revision ID: 0001_initial_lifeos
+Revises:
+Create Date: 2026-05-08
+"""
+
+from __future__ import annotations
+
+from alembic import op
+
+from lifeos_api.models import Base
+
+
+revision = "0001_initial_lifeos"
+down_revision = None
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    Base.metadata.create_all(bind=bind)
+
+
+def downgrade() -> None:
+    bind = op.get_bind()
+    Base.metadata.drop_all(bind=bind)

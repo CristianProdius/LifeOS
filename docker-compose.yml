@@ -1,0 +1,134 @@
+name: openclue-lifeos
+
+services:
+  openclue-gateway:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    container_name: openclue-gateway
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      OPENCLAW_GATEWAY_BIND: lan
+      OPENCLAW_GATEWAY_PORT: "18789"
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?set OPENCLAW_GATEWAY_TOKEN in .env}
+      OPENCLAW_TZ: ${OPENCLAW_TZ:-UTC}
+      OPENCLAW_TIMEZONE: ${OPENCLAW_TIMEZONE:-${OPENCLAW_TZ:-UTC}}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?set TELEGRAM_BOT_TOKEN in .env}
+      LIFEOS_API_BASE_URL: ${LIFEOS_API_BASE_URL:-http://lifeos-api:8080}
+      LIFEOS_API_TOKEN: ${LIFEOS_API_TOKEN:?set LIFEOS_API_TOKEN in .env}
+      LIFEOS_API_TIMEOUT_MS: ${LIFEOS_API_TIMEOUT_MS:-10000}
+      TZ: ${OPENCLAW_TZ:-UTC}
+      # Telegram long polling is the default. Do not set webhookUrl/webhookSecret
+      # in openclaw/config/openclaw.json unless a reverse-proxy webhook is intended.
+    ports:
+      - "127.0.0.1:18789:18789"
+    volumes:
+      - ./openclaw/config:/home/node/.openclaw
+      - ./openclaw/workspace:/home/node/.openclaw/workspace
+    networks:
+      - lifeos-edge
+    security_opt:
+      - no-new-privileges:true
+
+  lifeos-api:
+    build:
+      context: ./services/lifeos-api
+      dockerfile: Dockerfile
+    container_name: lifeos-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      LIFEOS_API_KEY: ${LIFEOS_API_TOKEN:?set LIFEOS_API_TOKEN in .env}
+      NODE_ENV: ${LIFEOS_API_NODE_ENV:-production}
+      PORT: ${LIFEOS_API_PORT:-8080}
+    depends_on:
+      lifeos-db:
+        condition: service_healthy
+      lifeos-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${LIFEOS_API_PORT:-8080}:${LIFEOS_API_PORT:-8080}"
+    networks:
+      - lifeos-edge
+      - lifeos-private
+
+  lifeos-db:
+    image: postgres:16-alpine
+    container_name: lifeos-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lifeos}
+      POSTGRES_USER: ${POSTGRES_USER:-lifeos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - lifeos-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - lifeos-private
+
+  lifeos-migrate:
+    build:
+      context: ./services/lifeos-api
+      dockerfile: Dockerfile
+    container_name: lifeos-migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      LIFEOS_API_KEY: ${LIFEOS_API_TOKEN:?set LIFEOS_API_TOKEN in .env}
+      NODE_ENV: ${LIFEOS_API_NODE_ENV:-production}
+    depends_on:
+      lifeos-db:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -lc
+      - ${LIFEOS_MIGRATE_COMMAND:-alembic upgrade head} && ${LIFEOS_SEED_COMMAND:-python -m lifeos_api.seed}
+    networks:
+      - lifeos-private
+
+  lifeos-backup:
+    image: postgres:16-alpine
+    container_name: lifeos-backup
+    profiles:
+      - backup
+    restart: unless-stopped
+    environment:
+      LIFEOS_BACKUP_INTERVAL_SECONDS: ${LIFEOS_BACKUP_INTERVAL_SECONDS:-86400}
+      LIFEOS_BACKUP_RETENTION_DAYS: ${LIFEOS_BACKUP_RETENTION_DAYS:-14}
+      PGDATABASE: ${POSTGRES_DB:-lifeos}
+      PGHOST: lifeos-db
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PGUSER: ${POSTGRES_USER:-lifeos}
+    depends_on:
+      lifeos-db:
+        condition: service_healthy
+    volumes:
+      - ./backups:/backups
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+        mkdir -p /backups
+        while true; do
+          ts="$$(date -u +%Y%m%dT%H%M%SZ)"
+          pg_dump -Fc -f "/backups/lifeos-$${ts}.dump"
+          find /backups -type f -name 'lifeos-*.dump' -mtime "+$${LIFEOS_BACKUP_RETENTION_DAYS}" -delete
+          sleep "$${LIFEOS_BACKUP_INTERVAL_SECONDS}"
+        done
+    networks:
+      - lifeos-private
+
+networks:
+  lifeos-edge:
+    driver: bridge
+  lifeos-private:
+    driver: bridge
+    internal: true
+
+volumes:
+  lifeos-db-data:

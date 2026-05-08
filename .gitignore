@@ -1,0 +1,36 @@
+.DS_Store
+
+# Local operator secrets.
+.env
+.env.*
+!.env.example
+
+# Runtime data and generated artifacts.
+backups/
+*.dump
+*.sql
+*.log
+
+# OpenClaw config contains tokens and local auth state.
+openclaw/config/*
+!openclaw/config/openclaw.template.json
+
+# Keep workspace content trackable for other workers, but ignore common runtime churn.
+openclaw/workspace/.cache/
+openclaw/workspace/logs/
+openclaw/workspace/media/
+openclaw/workspace/sessions/
+openclaw/workspace/tmp/
+
+# Language and build artifacts.
+node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.db
+dist/
+build/
+coverage/
+.turbo/
+.next/
