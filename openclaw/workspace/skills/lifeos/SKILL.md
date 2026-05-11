@@ -96,7 +96,7 @@ Telegram workout buttons:
 - `Change` -> callback `lifeos:workout:{plan_id}:change` -> ask one question or create a replacement if the desired change is obvious.
 - `Skip` -> callback `lifeos:workout:{plan_id}:skip` -> `PATCH /workouts/plans/{plan_id}` with `{"status":"skipped"}`.
 
-Use Telegram inline buttons with the `message` tool `interactive.blocks` payload when available. Button `value` must be deterministic and include the LifeOS id.
+Use Telegram inline buttons with the `message` tool `presentation.blocks` payload. Do not use `interactive.blocks`; OpenClaw expects semantic `presentation` blocks and renders them into Telegram inline buttons. Button `value` must be deterministic and include the LifeOS id.
 
 ## LifeOS Writes
 

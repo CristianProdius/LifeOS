@@ -53,7 +53,7 @@ curl -fsS -X PATCH -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: applicati
 curl -fsS -X POST -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/health/daily-summaries" -d '{"summary_date":"2026-05-11","source":"apple_health","steps":4000}'
 ```
 
-Use Telegram inline buttons through `message` tool interactive payloads when available:
+Use Telegram inline buttons through the OpenClaw `message` tool `presentation` payload. Do not use an `interactive` field; OpenClaw renders semantic `presentation.blocks` into Telegram inline buttons.
 
 ```json
 {
@@ -62,7 +62,32 @@ Use Telegram inline buttons through `message` tool interactive payloads when ava
   "target": "<chat_id>",
   "threadId": "<topic_id>",
   "message": "Workout text",
-  "interactive": {
+  "presentation": {
+    "blocks": [
+      {
+        "type": "text",
+        "text": "Workout text"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          {"label": "Start", "value": "lifeos:workout:123:start", "style": "primary"},
+          {"label": "Done", "value": "lifeos:workout:123:done", "style": "success"},
+          {"label": "Too hard", "value": "lifeos:workout:123:too_hard"},
+          {"label": "Change", "value": "lifeos:workout:123:change"},
+          {"label": "Skip", "value": "lifeos:workout:123:skip", "style": "danger"}
+        ]
+      }
+    ]
+  }
+}
+```
+
+The minimum acceptable workout button payload is:
+
+```json
+{
+  "presentation": {
     "blocks": [
       {
         "type": "buttons",
