@@ -232,6 +232,29 @@ def test_profile_includes_seeded_personalization_settings(tmp_path, monkeypatch)
     assert "Buy kitchen scale" in food_tasks
 
 
+def test_contexts_expose_relevant_personalization_and_settings_patch_merges(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        patch_response = client.patch(
+            "/profile/settings/sport",
+            json={"settings": {"city_training_days": ["wednesday", "friday"], "home_training_time": "evening"}},
+        )
+        sport_context = client.get("/context/sport")
+        food_context = client.get("/context/food")
+        daily_context = client.get("/context/daily")
+
+    assert patch_response.status_code == 200
+    patched_sport = patch_response.json()
+    assert patched_sport["city_training_days"] == ["wednesday", "friday"]
+    assert patched_sport["home_training_time"] == "evening"
+    assert patched_sport["swimming_baseline"]["repeat_distance_m"] == 50
+    assert sport_context.json()["personalization"]["sport"]["home_training_time"] == "evening"
+    assert sport_context.json()["personalization"]["coaching"]["style"] == "strict_data_based"
+    assert food_context.json()["personalization"]["food"]["tracking_mode"] == "strict_calories_protein"
+    assert "sport" not in food_context.json()["personalization"]
+    assert daily_context.json()["personalization"]["daily"]["sleep"]["wake_target"] == "07:00"
+    assert daily_context.json()["personalization"]["coaching"]["failure_triggers"][0] == "sleep_snooze_loop"
+
+
 def test_workout_plan_is_stored_and_contextualized_for_home(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         plan_response = client.post(

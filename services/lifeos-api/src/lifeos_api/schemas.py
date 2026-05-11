@@ -50,6 +50,10 @@ class LifeProfileUpdate(StrictModel):
     equipment: dict[str, str] | None = None
 
 
+class ProfileSettingsPatch(StrictModel):
+    settings: dict[str, Any]
+
+
 class WorkoutRecommendationRequest(StrictModel):
     goal: str = Field(default="general", min_length=1, max_length=80)
     available_minutes: int = Field(default=30, ge=10, le=180)

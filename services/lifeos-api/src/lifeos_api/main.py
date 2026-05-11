@@ -58,6 +58,7 @@ from lifeos_api.schemas import (
     HealthDailySummaryUpsert,
     HealthResponse,
     LifeProfileUpdate,
+    ProfileSettingsPatch,
     SportMissedDayRequest,
     SportTodayRequest,
     TaskCreate,
@@ -69,7 +70,7 @@ from lifeos_api.schemas import (
     WorkoutPlanUpdate,
     WorkoutRecommendationRequest,
 )
-from lifeos_api.seed import ensure_area, get_or_create_user, seed_reset_plan, seed_sport_program
+from lifeos_api.seed import PERSONALIZATION_SEED, ensure_area, get_or_create_user, seed_reset_plan, seed_sport_program
 from lifeos_api.utils import money, slugify
 
 
@@ -154,6 +155,16 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         session.refresh(profile)
         return profile_to_dict(profile)
 
+    @app.patch("/profile/settings/{domain}")
+    def update_profile_settings(domain: str, payload: ProfileSettingsPatch, session: Session = Depends(get_session)) -> dict[str, Any]:
+        user, _ = get_or_create_user(session)
+        setting = get_or_create_profile_setting(session, user.id, slugify(domain))
+        setting.settings = deep_merge_settings(setting.settings, payload.settings)
+        flag_modified(setting, "settings")
+        session.commit()
+        session.refresh(setting)
+        return setting.settings
+
     @app.get("/context/{area_slug}")
     def get_context(area_slug: str, session: Session = Depends(get_session)) -> dict[str, Any]:
         user, _ = get_or_create_user(session)
@@ -192,7 +203,9 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
                 .order_by(HealthDailySummary.summary_date.desc(), HealthDailySummary.updated_at.desc())
                 .limit(7)
             ).all()
+            settings = profile_settings(session, user.id)
             context["profile"] = profile_to_dict(get_or_create_life_profile(session, user.id))
+            context["personalization"] = context_personalization(normalized_area_slug, settings)
             context["recent_health_summaries"] = [health_daily_summary_to_dict(summary) for summary in health_summaries]
             context["health_progress"] = build_health_progress(health_summaries)
         if normalized_area_slug == "sport":
@@ -810,6 +823,35 @@ def get_or_create_life_profile(session: Session, user_id: int) -> LifeProfile:
 def profile_settings(session: Session, user_id: int) -> dict[str, dict[str, Any]]:
     settings = session.scalars(select(ProfileSetting).where(ProfileSetting.user_id == user_id).order_by(ProfileSetting.domain)).all()
     return {setting.domain: setting.settings for setting in settings}
+
+
+def get_or_create_profile_setting(session: Session, user_id: int, domain: str) -> ProfileSetting:
+    setting = session.scalar(select(ProfileSetting).where(ProfileSetting.user_id == user_id, ProfileSetting.domain == domain))
+    if setting is None:
+        setting = ProfileSetting(user_id=user_id, domain=domain, settings=PERSONALIZATION_SEED.get(domain, {}))
+        session.add(setting)
+        session.flush()
+    return setting
+
+
+def deep_merge_settings(existing: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(existing or {})
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge_settings(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def context_personalization(area_slug: str, settings: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    domains_by_area = {
+        "sport": ["sport", "daily", "coaching"],
+        "food": ["food", "coaching"],
+        "daily": ["daily", "sport", "food", "coaching"],
+        "health": ["sport", "food", "daily", "coaching"],
+    }
+    return {domain: settings[domain] for domain in domains_by_area.get(area_slug, []) if domain in settings}
 
 
 def lifeos_today(timezone_name: str | None = None) -> date:
