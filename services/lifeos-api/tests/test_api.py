@@ -479,6 +479,7 @@ def test_openclue_prompts_and_docs_reference_health_progress_contract():
         assert "/context/health" in text
         assert "Do not overreact to one bad day" in text
     assert '"thinkingDefault": "low"' in config
+    assert '"fastModeDefault": true' in config
     assert "sleep_duration_minutes" not in shortcut_docs
     assert "workouts_count" not in shortcut_docs
     assert "Xiaomi scale" in shortcut_docs
