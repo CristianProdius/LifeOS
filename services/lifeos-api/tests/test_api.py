@@ -316,6 +316,72 @@ def test_health_daily_summary_upsert_and_context(tmp_path, monkeypatch):
     assert sport_context.json()["recent_health_summaries"][0]["id"] == first.json()["id"]
 
 
+def test_shortcut_health_ingestion_requires_shortcut_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIFEOS_SHORTCUT_TOKEN", "shortcut-token")
+    with make_client(tmp_path, monkeypatch) as client:
+        normal_api_key_response = client.post(
+            "/integrations/shortcuts/health-daily-summary",
+            json={
+                "summary_date": "2026-05-11",
+                "source": "apple_health",
+                "steps": 5200,
+            },
+        )
+        wrong_token_response = client.post(
+            "/integrations/shortcuts/health-daily-summary",
+            headers={"Authorization": "Bearer wrong-token"},
+            json={
+                "summary_date": "2026-05-11",
+                "source": "apple_health",
+                "steps": 5200,
+            },
+        )
+
+    assert normal_api_key_response.status_code == 401
+    assert wrong_token_response.status_code == 401
+
+
+def test_shortcut_health_ingestion_upserts_daily_summary(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIFEOS_SHORTCUT_TOKEN", "shortcut-token")
+    with make_client(tmp_path, monkeypatch) as client:
+        first = client.post(
+            "/integrations/shortcuts/health-daily-summary",
+            headers={"Authorization": "Bearer shortcut-token"},
+            json={
+                "summary_date": "2026-05-11",
+                "source": "apple_health",
+                "sleep_duration_minutes": 430,
+                "sleep_quality": 78,
+                "weight_kg": 116.8,
+                "body_fat_percent": 34.1,
+                "bmi": 38.1,
+                "steps": 5200,
+                "active_energy_kcal": 490,
+                "workouts_count": 1,
+                "resting_heart_rate": 63,
+                "average_heart_rate": 92,
+            },
+        )
+        second = client.post(
+            "/integrations/shortcuts/health-daily-summary",
+            headers={"X-Shortcut-Token": "shortcut-token"},
+            json={
+                "summary_date": "2026-05-11",
+                "source": "apple_health",
+                "steps": 6000,
+                "active_energy_kcal": 530,
+            },
+        )
+        sport_context = client.get("/context/sport")
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
+    assert second.json()["steps"] == 6000
+    assert second.json()["active_energy_kcal"] == 530
+    assert sport_context.json()["recent_health_summaries"][0]["id"] == first.json()["id"]
+
+
 def test_skipping_workout_plan_does_not_create_completed_workout(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         plan_id = client.post(

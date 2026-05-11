@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import hmac
 import io
 import json
 import os
@@ -11,7 +12,7 @@ from datetime import date
 from typing import Any
 
 import pandas as pd
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -415,31 +416,15 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         response: Response,
         session: Session = Depends(get_session),
     ) -> dict[str, Any]:
-        user, _ = get_or_create_user(session)
-        summary = session.scalar(
-            select(HealthDailySummary).where(
-                HealthDailySummary.user_id == user.id,
-                HealthDailySummary.summary_date == payload.summary_date,
-                HealthDailySummary.source == payload.source,
-            )
-        )
-        created = summary is None
-        if summary is None:
-            summary = HealthDailySummary(
-                user_id=user.id,
-                summary_date=payload.summary_date,
-                source=payload.source,
-            )
-            session.add(summary)
-        updates = payload.model_dump(exclude_unset=True)
-        updates.pop("summary_date", None)
-        updates.pop("source", None)
-        for field, value in updates.items():
-            setattr(summary, field, value)
-        session.commit()
-        session.refresh(summary)
-        response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
-        return health_daily_summary_to_dict(summary)
+        return upsert_health_summary(payload, response, session)
+
+    @app.post("/integrations/shortcuts/health-daily-summary", status_code=status.HTTP_201_CREATED)
+    def ingest_shortcut_health_daily_summary(
+        payload: HealthDailySummaryUpsert,
+        response: Response,
+        session: Session = Depends(get_session),
+    ) -> dict[str, Any]:
+        return upsert_health_summary(payload, response, session)
 
     @app.post("/finance/import", status_code=status.HTTP_201_CREATED)
     def import_finance(payload: FinanceImportRequest, session: Session = Depends(get_session)) -> dict[str, Any]:
@@ -697,13 +682,69 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
     return app
 
 
-async def require_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
+async def require_api_key(
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    x_shortcut_token: str | None = Header(default=None, alias="X-Shortcut-Token"),
+) -> None:
+    if request.url.path.startswith("/integrations/shortcuts/"):
+        require_shortcut_token(authorization=authorization, x_shortcut_token=x_shortcut_token)
+        return
+
     expected = os.getenv("LIFEOS_API_KEY")
     allow_anonymous = os.getenv("LIFEOS_ALLOW_ANONYMOUS", "").lower() in {"1", "true", "yes"}
     if not expected and not allow_anonymous:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="api key is not configured")
-    if expected and x_api_key != expected:
+    if expected and not hmac.compare_digest(x_api_key or "", expected):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid API key")
+
+
+def require_shortcut_token(*, authorization: str | None, x_shortcut_token: str | None) -> None:
+    expected = os.getenv("LIFEOS_SHORTCUT_TOKEN")
+    if not expected:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="shortcut token is not configured")
+
+    supplied = x_shortcut_token or bearer_token(authorization)
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid shortcut token")
+
+
+def bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, separator, token = authorization.partition(" ")
+    if separator and scheme.lower() == "bearer" and token.strip():
+        return token.strip()
+    return None
+
+
+def upsert_health_summary(payload: HealthDailySummaryUpsert, response: Response, session: Session) -> dict[str, Any]:
+    user, _ = get_or_create_user(session)
+    summary = session.scalar(
+        select(HealthDailySummary).where(
+            HealthDailySummary.user_id == user.id,
+            HealthDailySummary.summary_date == payload.summary_date,
+            HealthDailySummary.source == payload.source,
+        )
+    )
+    created = summary is None
+    if summary is None:
+        summary = HealthDailySummary(
+            user_id=user.id,
+            summary_date=payload.summary_date,
+            source=payload.source,
+        )
+        session.add(summary)
+    updates = payload.model_dump(exclude_unset=True)
+    updates.pop("summary_date", None)
+    updates.pop("source", None)
+    for field, value in updates.items():
+        setattr(summary, field, value)
+    session.commit()
+    session.refresh(summary)
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return health_daily_summary_to_dict(summary)
 
 
 def get_or_create_life_profile(session: Session, user_id: int) -> LifeProfile:
