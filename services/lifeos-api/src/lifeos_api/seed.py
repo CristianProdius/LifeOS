@@ -288,6 +288,8 @@ def seed_sport_program(session: Session, user_id: int) -> dict[str, int]:
         session.add(program)
         session.flush()
         created += 1
+    elif program.status != "active":
+        program.status = "active"
 
     for week_number in range(1, SPORT_PROGRAM_WEEKS + 1):
         week = session.scalar(

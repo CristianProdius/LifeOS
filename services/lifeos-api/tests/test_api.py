@@ -498,6 +498,37 @@ def test_sport_progress_reports_low_confidence_with_sparse_data(tmp_path, monkey
     assert any("weight trend" in reason.lower() for reason in payload["reasons"])
 
 
+def test_sport_progress_stays_low_confidence_without_weight_trend(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        for day in range(5, 12):
+            response = client.post(
+                "/health/daily-summaries",
+                json={
+                    "summary_date": f"2026-05-{day:02d}",
+                    "source": "apple_health",
+                    "steps": 5500,
+                    "active_energy_kcal": 420,
+                },
+            )
+            assert response.status_code in {200, 201}
+
+        first_plan = client.post("/sport/today", json={"request_date": "2026-05-11", "location_context": "grandparents_home"})
+        second_plan = client.post("/sport/today", json={"request_date": "2026-05-12", "location_context": "grandparents_home"})
+        assert first_plan.status_code == 201
+        assert second_plan.status_code == 201
+        assert client.post(f"/workouts/plans/{first_plan.json()['planned_workout']['id']}/complete", json={}).status_code == 200
+        assert client.post(f"/workouts/plans/{second_plan.json()['planned_workout']['id']}/complete", json={}).status_code == 200
+
+        progress = client.get("/sport/progress")
+
+    assert progress.status_code == 200
+    payload = progress.json()
+    assert payload["latest_weight_kg"] is None
+    assert payload["confidence"] == "low"
+    assert payload["health_progress"]["data_quality"]["metric_days_available"]["weight_kg"] == 0
+    assert any("daily weight" in reason.lower() for reason in payload["reasons"])
+
+
 def test_sport_today_creates_program_linked_home_workout_idempotently(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         first = client.post("/sport/today", json={"request_date": "2026-05-11", "location_context": "grandparents_home"})
@@ -526,12 +557,18 @@ def test_sport_today_gym_context_differs_from_home(tmp_path, monkeypatch):
 
 def test_sport_missed_day_creates_safe_adjustment(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
+        plan = client.post("/sport/today", json={"request_date": "2026-05-11", "location_context": "grandparents_home"})
         response = client.post("/sport/missed-day", json={"missed_date": "2026-05-11", "reason": "travel"})
         progress = client.get("/sport/progress")
+        context = client.get("/sport/program/active")
 
+    assert plan.status_code == 201
     assert response.status_code == 201
     payload = response.json()
     assert payload["adjustment"]["reason"] == "missed_workout"
+    assert payload["skipped_plan"]["status"] == "skipped"
+    assert progress.json()["weekly_adherence"]["skipped_sessions"] == 1
+    assert context.json()["next_planned_workout"] is None
     assert "easy" in " ".join(payload["next_actions"]).lower()
     assert progress.status_code == 200
 

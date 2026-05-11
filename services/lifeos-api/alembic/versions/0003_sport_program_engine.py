@@ -127,8 +127,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_planned_workouts_program_week_id", "planned_workouts", type_="foreignkey")
-    op.drop_constraint("fk_planned_workouts_program_id", "planned_workouts", type_="foreignkey")
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":
+        op.drop_constraint("fk_planned_workouts_program_week_id", "planned_workouts", type_="foreignkey")
+        op.drop_constraint("fk_planned_workouts_program_id", "planned_workouts", type_="foreignkey")
     op.drop_column("planned_workouts", "adaptation_reason")
     op.drop_column("planned_workouts", "source")
     op.drop_column("planned_workouts", "program_day")

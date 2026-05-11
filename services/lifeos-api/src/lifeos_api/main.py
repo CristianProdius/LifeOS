@@ -8,8 +8,9 @@ import io
 import json
 import os
 from collections.abc import Iterator
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
@@ -71,8 +72,10 @@ from lifeos_api.seed import ensure_area, get_or_create_user, seed_reset_plan, se
 from lifeos_api.utils import money, slugify
 
 
+LIFEOS_DEFAULT_TIMEZONE = "Europe/Chisinau"
+
 DEFAULT_PROFILE = {
-    "timezone": "Europe/Chisinau",
+    "timezone": LIFEOS_DEFAULT_TIMEZONE,
     "default_context": "grandparents_home",
     "training_level": "beginner_returning",
     "goals": ["fat_loss", "consistency", "run_later"],
@@ -803,15 +806,25 @@ def get_or_create_life_profile(session: Session, user_id: int) -> LifeProfile:
     return profile
 
 
+def lifeos_today(timezone_name: str | None = None) -> date:
+    try:
+        timezone = ZoneInfo(timezone_name or LIFEOS_DEFAULT_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo(LIFEOS_DEFAULT_TIMEZONE)
+    return datetime.now(timezone).date()
+
+
 def sport_program_context(session: Session, user_id: int, reference_date: date | None = None) -> dict[str, Any]:
     goal, program = get_active_sport_goal_and_program(session, user_id)
-    current_week = get_current_program_week(session, program, reference_date)
+    effective_date = reference_date or lifeos_today()
+    current_week = get_current_program_week(session, program, effective_date)
     health_summaries = recent_health_summaries(session, user_id)
     next_plan = session.scalar(
         select(PlannedWorkout)
         .where(
             PlannedWorkout.user_id == user_id,
             PlannedWorkout.program_id == program.id,
+            PlannedWorkout.plan_date >= effective_date,
             PlannedWorkout.status.in_(["proposed", "accepted", "started"]),
         )
         .order_by(PlannedWorkout.plan_date.asc(), PlannedWorkout.created_at.desc())
@@ -828,20 +841,21 @@ def sport_program_context(session: Session, user_id: int, reference_date: date |
 
 
 def build_sport_progress(session: Session, user_id: int, reference_date: date | None = None) -> dict[str, Any]:
-    reference_date = reference_date or date.today()
+    reference_date = reference_date or lifeos_today()
     goal, program = get_active_sport_goal_and_program(session, user_id)
     current_week = get_current_program_week(session, program, reference_date)
     health_summaries = recent_health_summaries(session, user_id)
     health_progress = build_health_progress(health_summaries)
     latest_metrics = (health_progress["latest"] or {}).get("metrics", {})
     latest_weight = latest_metrics.get("weight_kg")
+    weight_days = health_progress["data_quality"]["metric_days_available"].get("weight_kg", 0)
     weekly = weekly_adherence(session, user_id, current_week)
     steps_average = health_progress["seven_day_average"].get("steps", 0)
     active_energy_average = health_progress["seven_day_average"].get("active_energy_kcal", 0)
     movement_rate = min(float(steps_average or 0) / current_week.target_steps_avg, 1) if current_week.target_steps_avg else 0
 
     if latest_weight is None:
-        weight_score = 10
+        weight_score = 0
         weight_delta_from_target = None
     else:
         weight_delta_from_target = rounded_metric(float(latest_weight) - current_week.target_weight_kg)
@@ -855,16 +869,16 @@ def build_sport_progress(session: Session, user_id: int, reference_date: date | 
     completed_sessions = weekly["completed_sessions"]
     latest_sync_date = health_progress["latest"]["summary_date"] if health_progress["latest"] else None
     recent_sync = bool(latest_sync_date and (reference_date - latest_sync_date).days <= 2)
-    if summary_count >= 7 and completed_sessions >= 2 and recent_sync:
+    if latest_weight is not None and weight_days >= 7 and completed_sessions >= 2 and recent_sync:
         confidence = "high"
-    elif summary_count >= 3 or completed_sessions >= 1 or recent_sync:
+    elif latest_weight is not None and (weight_days >= 3 or completed_sessions >= 1 or recent_sync):
         confidence = "medium"
     else:
         confidence = "low"
 
     reasons = []
-    if summary_count < 7:
-        reasons.append("Weight trend confidence is low until at least 7 daily summaries are synced.")
+    if weight_days < 7:
+        reasons.append("Weight trend confidence is low until at least 7 daily weight entries are synced.")
     if completed_sessions < 2:
         reasons.append("Workout adherence confidence is low until at least 2 program workouts are completed.")
     if not recent_sync:
@@ -908,7 +922,7 @@ def create_or_reuse_sport_today_workout(
     user_id: int,
     payload: SportTodayRequest,
 ) -> dict[str, Any]:
-    request_date = payload.request_date or date.today()
+    request_date = payload.request_date or lifeos_today()
     goal, program = get_active_sport_goal_and_program(session, user_id)
     current_week = get_current_program_week(session, program, request_date)
     existing = session.scalar(
@@ -929,12 +943,19 @@ def create_or_reuse_sport_today_workout(
     available_minutes = payload.available_minutes or default_minutes_for_week(current_week)
     intensity = intensity_for_week(current_week)
     program_day = max(1, min((request_date - current_week.week_start).days + 1, 7))
+    focus = program_focus_for_day(current_week, program_day)
+    weekly = weekly_adherence(session, user_id, current_week)
+    if weekly["skipped_sessions"] > 0 or has_recent_missed_adjustment(session, program, request_date):
+        focus = "recovery"
+        intensity = "easy"
+        available_minutes = min(available_minutes, 30)
     workout = build_planned_workout(
         goal="fat_loss",
         available_minutes=available_minutes,
         equipment=payload.equipment,
         intensity=intensity,
         location_context=location_context,
+        focus=focus,
     )
     exercises = add_program_notes_to_exercises(workout["exercises"], current_week, program_day)
     plan = PlannedWorkout(
@@ -953,7 +974,7 @@ def create_or_reuse_sport_today_workout(
         program_week_id=current_week.id,
         program_day=program_day,
         source="program",
-        adaptation_reason=current_week.phase,
+        adaptation_reason=f"{current_week.phase}:{focus}",
     )
     session.add(plan)
     session.flush()
@@ -974,6 +995,20 @@ def create_or_reuse_sport_today_workout(
 def create_missed_day_adjustment(session: Session, user_id: int, payload: SportMissedDayRequest) -> dict[str, Any]:
     _, program = get_active_sport_goal_and_program(session, user_id)
     current_week = get_current_program_week(session, program, payload.missed_date)
+    skipped_plan = session.scalar(
+        select(PlannedWorkout)
+        .where(
+            PlannedWorkout.user_id == user_id,
+            PlannedWorkout.program_id == program.id,
+            PlannedWorkout.plan_date == payload.missed_date,
+            PlannedWorkout.status.in_(["proposed", "accepted", "started"]),
+        )
+        .order_by(PlannedWorkout.created_at.desc())
+        .limit(1)
+    )
+    if skipped_plan is not None:
+        skipped_plan.status = "skipped"
+        skipped_plan.notes = append_note(skipped_plan.notes, payload.notes or payload.reason or "Marked missed by OpenClue.")
     next_actions = [
         "Keep the next session easy instead of doubling intensity.",
         "Do 20-30 minutes of walking and mobility if today is still available.",
@@ -998,6 +1033,7 @@ def create_missed_day_adjustment(session: Session, user_id: int, payload: SportM
     return {
         "adjustment": program_adjustment_to_dict(adjustment),
         "current_week": training_program_week_to_dict(current_week),
+        "skipped_plan": planned_workout_to_dict(skipped_plan) if skipped_plan else None,
         "next_actions": next_actions,
     }
 
@@ -1037,7 +1073,7 @@ def get_current_program_week(
     program: TrainingProgram,
     reference_date: date | None = None,
 ) -> TrainingProgramWeek:
-    reference_date = reference_date or date.today()
+    reference_date = reference_date or lifeos_today()
     elapsed_days = max((reference_date - program.start_date).days, 0)
     week_number = min((elapsed_days // 7) + 1, program.duration_weeks)
     if program.current_week_number != week_number:
@@ -1074,12 +1110,21 @@ def weekly_adherence(session: Session, user_id: int, week: TrainingProgramWeek) 
     ).all()
     completed = [workout for workout in workouts if workout.status == "completed"]
     skipped = [workout for workout in workouts if workout.status == "skipped"]
+    missed_adjustments = session.scalars(
+        select(ProgramAdjustment).where(
+            ProgramAdjustment.program_id == week.program_id,
+            ProgramAdjustment.reason == "missed_workout",
+            ProgramAdjustment.adjustment_date >= week.week_start,
+            ProgramAdjustment.adjustment_date <= week.week_end,
+        )
+    ).all()
+    skipped_dates = {workout.plan_date for workout in skipped} | {adjustment.adjustment_date for adjustment in missed_adjustments}
     target_sessions = week.target_strength_sessions + week.target_cardio_sessions
     completion_rate = round(len(completed) / target_sessions, 2) if target_sessions else 0
     return {
         "target_sessions": target_sessions,
         "completed_sessions": len(completed),
-        "skipped_sessions": len(skipped),
+        "skipped_sessions": len(skipped_dates),
         "completion_rate": min(completion_rate, 1),
     }
 
@@ -1107,6 +1152,33 @@ def sport_next_actions(confidence: str, healthy_pace_status: str, weekly: dict[s
     if confidence == "low":
         actions.append("Keep syncing weight and activity daily so the trend becomes reliable.")
     return actions or ["Keep the scheduled workout and maintain the current pace."]
+
+
+def program_focus_for_day(week: TrainingProgramWeek, program_day: int) -> str:
+    days = week.plan_json.get("days", []) if isinstance(week.plan_json, dict) else []
+    for day_plan in days:
+        if day_plan.get("day") == program_day:
+            return str(day_plan.get("focus") or "easy_cardio")
+    return "easy_cardio"
+
+
+def has_recent_missed_adjustment(session: Session, program: TrainingProgram, reference_date: date) -> bool:
+    adjustment = session.scalar(
+        select(ProgramAdjustment)
+        .where(
+            ProgramAdjustment.program_id == program.id,
+            ProgramAdjustment.reason == "missed_workout",
+            ProgramAdjustment.adjustment_date >= reference_date - timedelta(days=2),
+            ProgramAdjustment.adjustment_date < reference_date,
+        )
+        .order_by(ProgramAdjustment.adjustment_date.desc())
+        .limit(1)
+    )
+    return adjustment is not None
+
+
+def append_note(existing: str | None, note: str) -> str:
+    return f"{existing}\n{note}" if existing else note
 
 
 def default_minutes_for_week(week: TrainingProgramWeek) -> int:
@@ -1371,6 +1443,10 @@ def build_health_progress(summaries: list[HealthDailySummary]) -> dict[str, Any]
         )
 
     days_available = len({summary.summary_date for summary in ordered})
+    metric_days_available = {
+        metric: len({summary.summary_date for summary in ordered if getattr(summary, metric) is not None})
+        for metric in HEALTH_PROGRESS_METRICS
+    }
     has_latest = latest is not None
     has_trend = days_available >= 2
     missing_latest_metrics = [
@@ -1385,6 +1461,7 @@ def build_health_progress(summaries: list[HealthDailySummary]) -> dict[str, Any]
         "data_quality": {
             "summary_count": len(ordered),
             "days_available": days_available,
+            "metric_days_available": metric_days_available,
             "has_latest": has_latest,
             "has_trend": has_trend,
             "trend_status": "available" if has_trend else "needs_more_data" if has_latest else "no_data",
@@ -1453,10 +1530,31 @@ def build_planned_workout(
     equipment: list[str],
     intensity: str,
     location_context: str,
+    focus: str | None = None,
 ) -> dict[str, Any]:
     normalized_location = slugify(location_context).replace("-", "_")
     equipment_set = {slugify(item).replace("-", "_") for item in equipment}
-    if normalized_location in {"grandparents_home", "home"}:
+    normalized_focus = slugify(focus or "").replace("-", "_")
+    if normalized_focus == "recovery":
+        exercises = [
+            {"name": "Easy walk", "duration_seconds": min(available_minutes, 20) * 60, "notes": "Keep this intentionally easy."},
+            {"name": "Mobility flow", "duration_seconds": 420, "notes": "Hips, ankles, upper back, shoulders."},
+            {"name": "Breathing downshift", "duration_seconds": 240},
+        ]
+    elif normalized_focus == "long_walk":
+        exercises = [
+            {"name": "Easy long walk", "duration_seconds": max((available_minutes - 5) * 60, 1200), "notes": "Comfortable pace, no jogging."},
+            {"name": "Mobility cooldown", "duration_seconds": 300},
+        ]
+    elif normalized_location in {"grandparents_home", "home"} and normalized_focus == "strength_basics":
+        exercises = [
+            {"name": "Easy walk warm-up", "duration_seconds": 480},
+            {"name": "Chair squats", "sets": 2, "reps": 8, "notes": "Stop if knees hurt."},
+            {"name": "Wall push-ups", "sets": 2, "reps": 8, "notes": "Keep it easy and controlled."},
+            {"name": "Dead bug", "sets": 2, "reps": 8, "notes": "Slow reps; keep lower back controlled."},
+            {"name": "Mobility cooldown", "duration_seconds": 300},
+        ]
+    elif normalized_location in {"grandparents_home", "home"}:
         exercises = [
             {"name": "Easy walk", "duration_seconds": min(available_minutes, 20) * 60, "notes": "Nose-breathing pace if possible."},
             {"name": "Mobility flow", "duration_seconds": 360, "notes": "Hips, ankles, thoracic spine, shoulders."},
@@ -1491,6 +1589,7 @@ def build_planned_workout(
         "intensity": intensity,
         "location_context": location_context,
         "equipment": equipment,
+        "focus": normalized_focus or None,
         "exercises": exercises,
     }
 
