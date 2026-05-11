@@ -230,6 +230,49 @@ cd /opt/lifeos
 
 The bootstrap script validates secrets, renders `openclaw/config/openclaw.json`, fixes OpenClaw bind-mount ownership on Linux root deployments, starts the gateway, starts LifeOS API/Postgres, and starts the backup worker.
 
+### Deployment Sync Safety
+
+Do not delete OpenClaw runtime auth state during deploys. The VPS directory `openclaw/config` is not only generated config; it also contains runtime auth, identity, Telegram offsets, task state, and model auth profiles. In particular, this file must survive deploys:
+
+```text
+openclaw/config/agents/main/agent/auth-profiles.json
+```
+
+If it is deleted, Telegram replies fail with:
+
+```text
+Missing API key for provider "openai-codex"
+```
+
+When using `rsync --delete`, exclude runtime state:
+
+```bash
+rsync -az --delete \
+  --exclude '.env' \
+  --exclude 'backups/' \
+  --exclude 'openclaw/config/agents/' \
+  --exclude 'openclaw/config/identity/' \
+  --exclude 'openclaw/config/logs/' \
+  --exclude 'openclaw/config/telegram/' \
+  --exclude 'openclaw/config/tasks/' \
+  --exclude 'openclaw/config/canvas/' \
+  --exclude 'openclaw/config/plugin-skills/' \
+  --exclude 'openclaw/config/openclaw.json' \
+  --exclude 'openclaw/config/openclaw.json.*' \
+  --exclude 'services/lifeos-api/.venv/' \
+  --exclude '**/__pycache__/' \
+  ./ jira-microlab-automation:/opt/lifeos/
+```
+
+After every deploy, verify model auth:
+
+```bash
+cd /opt/lifeos
+docker compose --env-file .env run --rm openclaw-cli models status --probe
+```
+
+Expected: `openai-codex/gpt-5.5` reports `ok`.
+
 OpenClaw also needs model/provider authentication. OpenClue is configured to use the ChatGPT/Codex subscription route, not an OpenAI API key:
 
 ```bash
