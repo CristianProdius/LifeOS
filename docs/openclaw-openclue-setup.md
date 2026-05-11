@@ -145,10 +145,12 @@ When the user presses a button, OpenClue updates LifeOS first, re-queries the ch
 Sport recommendations must be stored before OpenClue presents them as today's plan.
 
 1. User asks for a workout in Sport.
-2. OpenClue calls `GET /context/sport`.
-3. OpenClue creates a proposed plan with `POST /workouts/plan`.
+2. OpenClue calls `POST /sport/today`.
+3. LifeOS creates or reuses a program-linked `planned_workout`.
 4. OpenClue sends the returned workout visibly in Sport with inline buttons.
 5. Button callbacks update LifeOS first, then OpenClue re-queries and acknowledges in Sport.
+
+For progress questions, OpenClue calls `GET /sport/progress`. For missed training days, OpenClue calls `POST /sport/missed-day`. `POST /workouts/plan` remains available for low-level/manual workout planning, but normal Telegram Sport workout generation should use the Sport Program Engine.
 
 Default context is `grandparents_home`. OpenClue should only switch to gym, pool, or Chisinau when the user says that context explicitly. At home, recommendations should use walking, mobility, gentle bodyweight, and recovery; avoid gym-equipment work such as Romanian deadlifts.
 

@@ -51,6 +51,8 @@ curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/financ
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/food"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/health"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/review"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/sport/program/active"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/sport/progress"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/profile"
 ```
 
@@ -68,8 +70,9 @@ Use these routes as the first choice for common actions:
 - `POST /checkins` for morning, midday, evening, and relapse check-ins.
 - `POST /tasks` and `PATCH /tasks/{id}` for task creation and status changes.
 - `POST /habits/log` for habit completion, skips, misses, or notes.
-- `POST /workouts/plan`, `PATCH /workouts/plans/{id}`, and `POST /workouts/plans/{id}/complete` for proposed workouts, Telegram button changes, and completed workouts.
-- `POST /workouts/recommend` is legacy. Do not use it for Telegram Sport recommendations unless the user explicitly asks for an unsaved draft.
+- `GET /sport/program/active`, `POST /sport/today`, `GET /sport/progress`, and `POST /sport/missed-day` for Sport Program Engine flows.
+- `POST /workouts/plan`, `PATCH /workouts/plans/{id}`, and `POST /workouts/plans/{id}/complete` for low-level/manual proposed workouts, Telegram button changes, and completed workouts.
+- `POST /workouts/recommend` is legacy. Do not call /workouts/recommend for Telegram Sport recommendations unless the user explicitly asks for an unsaved draft.
 - `POST /workouts/log` for direct manual workout logs.
 - `POST /health/daily-summaries` for Apple Health, Sleep Cycle, Xiaomi scale, or Shortcuts daily summary upserts.
 - `POST /finance/import`, `GET /finance/summary`, and `POST /finance/affordability` for finance flows.
@@ -91,11 +94,22 @@ For Sport, Food, Daily, and Health contexts, `GET /context/{area}` includes `hea
 
 When the user asks what workout to do today:
 
-1. Query `GET /context/sport`.
-2. Read `health_progress` and recent workouts. Do not overreact to one bad day.
-3. Decide context. Default to `grandparents_home` unless the message mentions Chisinau, gym, pool, swimming, or equivalent.
-4. Create the plan with `POST /workouts/plan`.
-5. Send the returned workout visibly to Telegram with buttons.
+1. Call `POST /sport/today`.
+2. Include inferred `location_context`, `available_minutes`, and `equipment` only when known from the user's message or topic context.
+3. Read the returned `planned_workout`, `current_week`, and `program_reason`. Do not invent a different workout.
+4. Send the returned workout visibly to Telegram with buttons.
+
+When the user asks whether they are on track, asks about goal success, or asks about progress:
+
+1. Call `GET /sport/progress`.
+2. Report `on_track_score`, `confidence`, and the most important reasons.
+3. If confidence is low, say what data is missing instead of pretending the score is precise.
+
+When the user says they missed a training day:
+
+1. Call `POST /sport/missed-day`.
+2. Use the returned safe next actions.
+3. Do not double the next workout or prescribe punishment work.
 
 Home/grandparents default:
 

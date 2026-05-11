@@ -55,9 +55,14 @@ docker run --rm -p 8080:8080 -e PORT=8080 -e LIFEOS_API_KEY=replace-me -e DATABA
 - `POST /tasks`
 - `PATCH /tasks/{id}`
 - `POST /habits/log`
-- `POST /workouts/recommend`
+- `POST /sport/program/seed`
+- `GET /sport/program/active`
+- `POST /sport/today`
+- `GET /sport/progress`
+- `POST /sport/missed-day`
+- `POST /workouts/recommend` (legacy unsaved draft route)
 - `POST /workouts/log`
-- `POST /workouts/plan`
+- `POST /workouts/plan` (low-level/manual stored workout route)
 - `GET /workouts/plans/{id}`
 - `PATCH /workouts/plans/{id}`
 - `POST /workouts/plans/{id}/complete`

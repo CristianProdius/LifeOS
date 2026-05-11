@@ -17,6 +17,8 @@ curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/sport"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/daily"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/health"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/finance"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/sport/program/active"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/sport/progress"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/profile"
 ```
 
@@ -26,12 +28,13 @@ For Sport, Food, Daily, and Health contexts, use `health_progress` before interp
 
 For Sport workout requests:
 
-- Query `/context/sport` first.
-- Use `health_progress` plus recent workouts to choose easy versus moderate training. Low steps, high average heart rate, or limited trend data should bias toward walking, mobility, or controlled beginner work.
-- Create the recommendation with `POST /workouts/plan`.
+- Call `POST /sport/today` first. Include inferred `location_context`, available minutes, and equipment when the user gives them.
+- Use the returned `planned_workout`, `current_week`, and `program_reason`; do not invent a different workout.
 - Only then send the workout in Telegram.
-- Use today's date in Europe/Chisinau for `plan_date`.
+- Use today's date in Europe/Chisinau for `request_date` when a date is needed.
 - Do not call `/workouts/recommend` for Telegram Sport workout requests.
+- Use `GET /sport/progress` for "am I on track?", goal pace, weight target, adherence, or success-score questions.
+- Use `POST /sport/missed-day` when the user says they missed or skipped a planned training day.
 - Default context is grandparents/home unless the user says Chisinau, gym, pool, swimming, or equivalent.
 - At grandparents/home, recommend walking, gentle bodyweight, mobility, and recovery. Do not recommend gym equipment or Romanian deadlifts unless gym/equipment context is explicit.
 - Include Telegram buttons with callback values:
@@ -53,6 +56,9 @@ Use these write routes:
 
 ```bash
 curl -fsS -X POST -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/workouts/plan" -d '{"plan_date":"2026-05-11","goal":"fat_loss","available_minutes":30,"location_context":"grandparents_home","equipment":[],"intensity":"easy","telegram_metadata":{"chat_id":"<chat_id>","topic_id":"<topic_id>","message_id":"<message_id>"}}'
+curl -fsS -X POST -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/sport/today" -d '{"request_date":"2026-05-11","location_context":"grandparents_home","equipment":[]}'
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/sport/progress"
+curl -fsS -X POST -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/sport/missed-day" -d '{"missed_date":"2026-05-11","reason":"travel"}'
 curl -fsS -X PATCH -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/workouts/plans/{id}" -d '{"status":"started"}'
 curl -fsS -X POST -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/workouts/plans/{id}/complete" -d '{}'
 curl -fsS -X PATCH -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/tasks/{id}" -d '{"status":"done"}'

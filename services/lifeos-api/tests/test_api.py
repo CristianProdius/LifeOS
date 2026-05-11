@@ -554,6 +554,20 @@ def test_openclue_prompts_and_docs_reference_health_progress_contract():
     assert "Xiaomi scale" in shortcut_docs
 
 
+def test_openclue_uses_sport_program_engine_for_sport_workouts():
+    repo_root = Path(__file__).resolve().parents[3]
+    agents = (repo_root / "openclaw/workspace/AGENTS.md").read_text()
+    skill = (repo_root / "openclaw/workspace/skills/lifeos/SKILL.md").read_text()
+    config = (repo_root / "openclaw/config/openclaw.template.json").read_text()
+
+    for text in [agents, skill, config]:
+        assert "/sport/today" in text
+        assert "/sport/progress" in text
+        assert "/sport/missed-day" in text
+    assert "Do not call /workouts/recommend for Telegram Sport" in skill
+    assert "query /context/sport first, use health_progress plus recent workouts" not in config
+
+
 def test_shortcut_health_ingestion_requires_shortcut_token(tmp_path, monkeypatch):
     monkeypatch.setenv("LIFEOS_SHORTCUT_TOKEN", "shortcut-token")
     with make_client(tmp_path, monkeypatch) as client:
