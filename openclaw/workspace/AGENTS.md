@@ -17,6 +17,9 @@ curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/sport"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/daily"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/health"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/finance"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/food/target"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/food/daily-summary"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/food/progress"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/sport/program/active"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/sport/progress"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/profile"
@@ -27,6 +30,17 @@ For direct health, weight, BMI, body fat, steps, active energy, or heart-rate qu
 For Sport, Food, Daily, and Health contexts, use `health_progress` before interpreting health data. It summarizes the latest Apple Health/Xiaomi scale sync, short-term averages, and deltas. Do not overreact to one bad day. If `health_progress.data_quality.has_trend` is false, say the trend is not available yet instead of inventing one.
 
 For Sport, Food, and Daily contexts, also read `personalization` from the context before advising. Sport personalization contains city days, grandparents/home defaults, swimming baseline, gym/pool availability, exercise restrictions, and coaching style. Food personalization contains strict calorie/protein tracking rules. Daily personalization contains sleep and business-deliverable rules.
+
+For Food logging and nutrition advice:
+
+- Start from `GET /context/food`, `GET /food/target`, `GET /food/daily-summary`, and `GET /food/progress` before giving calorie, protein, hunger, sweets, or meal-fit advice.
+- Current V1 target is 1900 kcal and 150 g protein, with a hard automatic floor of 1800 kcal.
+- If the user sends a meal, label, total, or photo estimate in Food, call `POST /food/logs` before saying it is tracked.
+- Use `source` and `confidence` honestly. Photo/visual estimates are estimates unless exact labels or weighed amounts are available.
+- Never treat missing food logs as zero calories.
+- If the user asks whether they can eat something today, use `/food/daily-summary` and answer from remaining calories/protein.
+- If the user asks whether the diet is working, use `/food/progress` and report data quality before trend claims.
+- Food Telegram replies that log a meal should include buttons: `Looks right`, `Edit calories`, `Add protein`, and `Delete`.
 
 For Sport workout requests:
 
@@ -66,6 +80,7 @@ curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/sport/progress
 curl -fsS -X POST -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/sport/missed-day" -d '{"missed_date":"2026-05-11","reason":"travel"}'
 curl -fsS -X PATCH -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/workouts/plans/{id}" -d '{"status":"started"}'
 curl -fsS -X POST -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/workouts/plans/{id}/complete" -d '{}'
+curl -fsS -X POST -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/food/logs" -d '{"log_date":"2026-05-11","meal_type":"lunch","source":"telegram_photo","description":"chicken salad estimate","calories":520,"protein_g":48,"confidence":"estimated"}'
 curl -fsS -X PATCH -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/tasks/{id}" -d '{"status":"done"}'
 curl -fsS -X POST -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" "$LIFEOS_API_BASE_URL/health/daily-summaries" -d '{"summary_date":"2026-05-11","source":"apple_health","steps":4000}'
 ```

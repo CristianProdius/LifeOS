@@ -168,6 +168,28 @@ lifeos:workout:{plan_id}:skip
 
 Daily task buttons should use the same LifeOS-first rule with deterministic values such as `lifeos:task:{task_id}:done`, `lifeos:task:{task_id}:block`, and `lifeos:task:{task_id}:snooze_tomorrow`.
 
+## Food Calorie And Protein Flow
+
+Food advice must be grounded in the LifeOS Food Engine, not generic estimates. OpenClue should call `GET /context/food`, `GET /food/target`, `GET /food/daily-summary`, and `GET /food/progress` before answering meal-fit, hunger, sweets, calorie, protein, or diet-progress questions.
+
+The V1 starting target is 1900 kcal and 150 g protein. LifeOS enforces a hard automatic floor of 1800 kcal. Never treat missing food logs as zero calories; missing logs mean the day is incomplete.
+
+When Cristian sends a meal, daily total, nutrition label, or photo estimate in the Food topic:
+
+1. OpenClue calls `POST /food/logs` with `source`, `description`, `calories`, `protein_g`, and honest `confidence`.
+2. LifeOS stores the log and item rows when item details exist.
+3. OpenClue re-queries `/food/daily-summary`.
+4. OpenClue replies in Food with remaining calories/protein and inline buttons.
+
+Food confirmation buttons:
+
+```text
+Looks right
+Edit calories
+Add protein
+Delete
+```
+
 ## Health Summary Extension Point
 
 V1.1 stores daily health summaries, not raw health samples. Use `POST /health/daily-summaries` for future Apple Health, Apple Watch, Sleep Cycle, Xiaomi scale, or iOS Shortcuts input. The summary can include sleep duration and quality, weight, body fat, BMI, steps, active energy, workout count, resting heart rate, average heart rate, and notes.

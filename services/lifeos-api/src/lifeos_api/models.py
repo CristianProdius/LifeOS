@@ -308,6 +308,77 @@ class HealthDailySummary(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
 
+class FoodTarget(TimestampMixin, Base):
+    __tablename__ = "food_targets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(40), default="active", nullable=False)
+    calories: Mapped[int] = mapped_column(Integer, nullable=False)
+    protein_g: Mapped[float] = mapped_column(Float, nullable=False)
+    carbs_g: Mapped[float | None] = mapped_column(Float)
+    fat_g: Mapped[float | None] = mapped_column(Float)
+    calorie_floor: Mapped[int] = mapped_column(Integer, default=1800, nullable=False)
+    source: Mapped[str] = mapped_column(String(80), default="calculated", nullable=False)
+    calculation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class FoodLog(TimestampMixin, Base):
+    __tablename__ = "food_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    log_date: Mapped[date] = mapped_column(Date, nullable=False)
+    meal_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="active", nullable=False)
+    source: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    calories: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    protein_g: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    carbs_g: Mapped[float | None] = mapped_column(Float)
+    fat_g: Mapped[float | None] = mapped_column(Float)
+    confidence: Mapped[str] = mapped_column(String(40), default="estimated", nullable=False)
+    telegram_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    items: Mapped[list[FoodLogItem]] = relationship(back_populates="log", cascade="all, delete-orphan")
+
+
+class FoodLogItem(TimestampMixin, Base):
+    __tablename__ = "food_log_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    food_log_id: Mapped[int] = mapped_column(ForeignKey("food_logs.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(40))
+    calories: Mapped[int | None] = mapped_column(Integer)
+    protein_g: Mapped[float | None] = mapped_column(Float)
+    carbs_g: Mapped[float | None] = mapped_column(Float)
+    fat_g: Mapped[float | None] = mapped_column(Float)
+    confidence: Mapped[str] = mapped_column(String(40), default="estimated", nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    log: Mapped[FoodLog] = relationship(back_populates="items")
+
+
+class FoodDailyReview(TimestampMixin, Base):
+    __tablename__ = "food_daily_reviews"
+    __table_args__ = (UniqueConstraint("user_id", "review_date", name="uq_food_daily_reviews_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    review_date: Mapped[date] = mapped_column(Date, nullable=False)
+    hunger: Mapped[int | None] = mapped_column(Integer)
+    energy: Mapped[int | None] = mapped_column(Integer)
+    adherence_status: Mapped[str | None] = mapped_column(String(80))
+    notes: Mapped[str | None] = mapped_column(Text)
+    recommendations: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+
+
 class FinanceAccount(TimestampMixin, Base):
     __tablename__ = "finance_accounts"
     __table_args__ = (UniqueConstraint("user_id", "name", name="uq_finance_accounts_user_name"),)

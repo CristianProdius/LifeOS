@@ -129,6 +129,65 @@ class HealthDailySummaryUpsert(StrictModel):
     notes: str | None = None
 
 
+class FoodTargetRecalculate(StrictModel):
+    effective_date: date | None = None
+    calories: int | None = Field(default=None, ge=1200, le=5000)
+    protein_g: float | None = Field(default=None, ge=0, le=400)
+    notes: str | None = None
+
+
+class FoodLogItemPayload(StrictModel):
+    name: str = Field(min_length=1, max_length=255)
+    quantity: float | None = Field(default=None, ge=0)
+    unit: str | None = Field(default=None, max_length=40)
+    calories: int | None = Field(default=None, ge=0)
+    protein_g: float | None = Field(default=None, ge=0)
+    carbs_g: float | None = Field(default=None, ge=0)
+    fat_g: float | None = Field(default=None, ge=0)
+    confidence: str = Field(default="estimated", min_length=1, max_length=40)
+    notes: str | None = None
+
+
+class FoodLogCreate(StrictModel):
+    log_date: date
+    meal_type: str = Field(min_length=1, max_length=40)
+    source: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=1, max_length=500)
+    calories: int = Field(ge=0)
+    protein_g: float = Field(default=0, ge=0)
+    carbs_g: float | None = Field(default=None, ge=0)
+    fat_g: float | None = Field(default=None, ge=0)
+    confidence: str = Field(default="estimated", min_length=1, max_length=40)
+    telegram_metadata: dict[str, Any] = Field(default_factory=dict)
+    notes: str | None = None
+    items: list[FoodLogItemPayload] = Field(default_factory=list, max_length=50)
+
+
+class FoodLogUpdate(StrictModel):
+    log_date: date | None = None
+    meal_type: str | None = Field(default=None, min_length=1, max_length=40)
+    status: str | None = Field(default=None, min_length=1, max_length=40)
+    source: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, min_length=1, max_length=500)
+    calories: int | None = Field(default=None, ge=0)
+    protein_g: float | None = Field(default=None, ge=0)
+    carbs_g: float | None = Field(default=None, ge=0)
+    fat_g: float | None = Field(default=None, ge=0)
+    confidence: str | None = Field(default=None, min_length=1, max_length=40)
+    telegram_metadata: dict[str, Any] | None = None
+    notes: str | None = None
+    items: list[FoodLogItemPayload] | None = Field(default=None, max_length=50)
+
+
+class FoodDailyReviewCreate(StrictModel):
+    review_date: date
+    hunger: int | None = Field(default=None, ge=1, le=10)
+    energy: int | None = Field(default=None, ge=1, le=10)
+    adherence_status: str | None = Field(default=None, max_length=80)
+    notes: str | None = None
+    recommendations: list[str] = Field(default_factory=list, max_length=20)
+
+
 class FinanceImportRequest(StrictModel):
     source: str = Field(default="manual", min_length=1, max_length=120)
     rows: list[dict[str, Any]] | None = Field(default=None, max_length=1000)

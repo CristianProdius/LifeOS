@@ -75,6 +75,7 @@ Use these routes as the first choice for common actions:
 - `POST /workouts/recommend` is legacy. Do not call /workouts/recommend for Telegram Sport recommendations unless the user explicitly asks for an unsaved draft.
 - `POST /workouts/log` for direct manual workout logs.
 - `POST /health/daily-summaries` for Apple Health, Sleep Cycle, Xiaomi scale, or Shortcuts daily summary upserts.
+- `GET /food/target`, `GET /food/daily-summary`, `GET /food/progress`, and `POST /food/logs` for Food calorie/protein tracking.
 - `POST /finance/import`, `GET /finance/summary`, and `POST /finance/affordability` for finance flows.
 - `POST /daily/plan`, `POST /reviews/daily`, and `POST /reviews/weekly` for planning and reviews.
 
@@ -123,6 +124,11 @@ Food and Daily personalization:
 
 - Use strict calorie and protein tracking in Food.
 - Treat photo-based calories as estimates unless exact labels or weights are provided.
+- Current Food Engine target is 1900 kcal and 150 g protein, with no automatic target below 1800 kcal.
+- Before calorie, protein, hunger, sweets, meal-fit, or diet-progress advice, query `GET /context/food`, `GET /food/target`, `GET /food/daily-summary`, or `GET /food/progress` as needed.
+- If Cristian sends a meal, total, label, or photo estimate, write it with `POST /food/logs` before claiming it is tracked.
+- Never treat missing food logs as zero calories.
+- For meal log confirmations, send Food topic buttons: `Looks right`, `Edit calories`, `Add protein`, and `Delete`.
 - City days still require a defined work deliverable before the work block starts.
 - Poor sleep should reduce training intensity and narrow the business task.
 
