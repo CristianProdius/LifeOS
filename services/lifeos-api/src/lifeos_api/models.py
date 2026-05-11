@@ -49,6 +49,19 @@ class User(TimestampMixin, Base):
     areas: Mapped[list[Area]] = relationship(back_populates="user")
 
 
+class LifeProfile(TimestampMixin, Base):
+    __tablename__ = "life_profiles"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_life_profiles_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), default="Europe/Chisinau", nullable=False)
+    default_context: Mapped[str] = mapped_column(String(80), default="grandparents_home", nullable=False)
+    training_level: Mapped[str] = mapped_column(String(80), default="beginner_returning", nullable=False)
+    goals: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    equipment: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, nullable=False)
+
+
 class Area(TimestampMixin, Base):
     __tablename__ = "areas"
     __table_args__ = (UniqueConstraint("user_id", "slug", name="uq_areas_user_slug"),)
@@ -173,6 +186,45 @@ class WorkoutExercise(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
     session: Mapped[WorkoutSession] = relationship(back_populates="exercises")
+
+
+class PlannedWorkout(TimestampMixin, Base):
+    __tablename__ = "planned_workouts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    plan_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="proposed", nullable=False)
+    location_context: Mapped[str] = mapped_column(String(80), default="grandparents_home", nullable=False)
+    goal: Mapped[str] = mapped_column(String(80), default="fat_loss", nullable=False)
+    intensity: Mapped[str] = mapped_column(String(40), default="easy", nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    equipment: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    exercises: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    telegram_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+    completed_workout_id: Mapped[int | None] = mapped_column(ForeignKey("workout_sessions.id", ondelete="SET NULL"))
+
+
+class HealthDailySummary(TimestampMixin, Base):
+    __tablename__ = "health_daily_summaries"
+    __table_args__ = (UniqueConstraint("user_id", "summary_date", "source", name="uq_health_daily_summaries_user_date_source"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    summary_date: Mapped[date] = mapped_column(Date, nullable=False)
+    source: Mapped[str] = mapped_column(String(80), nullable=False)
+    sleep_duration_minutes: Mapped[int | None] = mapped_column(Integer)
+    sleep_quality: Mapped[int | None] = mapped_column(Integer)
+    weight_kg: Mapped[float | None] = mapped_column(Float)
+    body_fat_percent: Mapped[float | None] = mapped_column(Float)
+    bmi: Mapped[float | None] = mapped_column(Float)
+    steps: Mapped[int | None] = mapped_column(Integer)
+    active_energy_kcal: Mapped[int | None] = mapped_column(Integer)
+    workouts_count: Mapped[int | None] = mapped_column(Integer)
+    resting_heart_rate: Mapped[int | None] = mapped_column(Integer)
+    average_heart_rate: Mapped[int | None] = mapped_column(Integer)
+    notes: Mapped[str | None] = mapped_column(Text)
 
 
 class FinanceAccount(TimestampMixin, Base):

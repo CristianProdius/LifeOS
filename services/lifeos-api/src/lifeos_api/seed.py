@@ -12,6 +12,7 @@ from lifeos_api.models import (
     FinanceCategory,
     FinanceGoal,
     HabitDefinition,
+    LifeProfile,
     TaskTemplate,
     Task,
     User,
@@ -92,6 +93,8 @@ def seed_reset_plan(session: Session) -> dict[str, int]:
     created = 0
     user, was_created = get_or_create_user(session)
     created += int(was_created)
+    if user.timezone != "Europe/Chisinau":
+        user.timezone = "Europe/Chisinau"
 
     areas: dict[str, Area] = {}
     for index, (slug, name, description) in enumerate(AREA_SEED, start=1):
@@ -170,6 +173,20 @@ def seed_reset_plan(session: Session) -> dict[str, int]:
     account = session.scalar(select(FinanceAccount).where(FinanceAccount.user_id == user.id, FinanceAccount.name == "checking"))
     if account is None:
         session.add(FinanceAccount(user_id=user.id, name="checking", account_type="checking"))
+        created += 1
+
+    profile = session.scalar(select(LifeProfile).where(LifeProfile.user_id == user.id))
+    if profile is None:
+        session.add(
+            LifeProfile(
+                user_id=user.id,
+                timezone="Europe/Chisinau",
+                default_context="grandparents_home",
+                training_level="beginner_returning",
+                goals=["fat_loss", "consistency", "run_later"],
+                equipment={"walking_pad": "planned", "pull_up_bar": "planned"},
+            )
+        )
         created += 1
 
     month = date(2026, 5, 1)

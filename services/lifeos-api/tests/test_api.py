@@ -171,6 +171,151 @@ def test_workout_recommendation_and_log(tmp_path, monkeypatch):
     assert len(log_response.json()["exercises"]) == 2
 
 
+def test_profile_defaults_and_updates(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        default_profile = client.get("/profile")
+        update_response = client.patch(
+            "/profile",
+            json={
+                "default_context": "chisinau_gym",
+                "equipment": {"walking_pad": "available", "pull_up_bar": "planned"},
+            },
+        )
+
+    assert default_profile.status_code == 200
+    assert default_profile.json()["timezone"] == "Europe/Chisinau"
+    assert default_profile.json()["default_context"] == "grandparents_home"
+    assert default_profile.json()["training_level"] == "beginner_returning"
+    assert default_profile.json()["goals"] == ["fat_loss", "consistency", "run_later"]
+    assert default_profile.json()["equipment"]["walking_pad"] == "planned"
+    assert default_profile.json()["equipment"]["pull_up_bar"] == "planned"
+    assert update_response.status_code == 200
+    assert update_response.json()["default_context"] == "chisinau_gym"
+    assert update_response.json()["equipment"]["walking_pad"] == "available"
+
+
+def test_workout_plan_is_stored_and_contextualized_for_home(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        plan_response = client.post(
+            "/workouts/plan",
+            json={
+                "plan_date": "2026-05-11",
+                "goal": "fat_loss",
+                "available_minutes": 35,
+                "location_context": "grandparents_home",
+                "equipment": [],
+                "intensity": "easy",
+                "telegram_metadata": {
+                    "chat_id": "-1003943676064",
+                    "topic_id": "5",
+                    "message_id": "78",
+                },
+            },
+        )
+        context_response = client.get("/context/sport")
+
+    assert plan_response.status_code == 201
+    planned = plan_response.json()
+    assert planned["status"] == "proposed"
+    assert planned["location_context"] == "grandparents_home"
+    assert planned["telegram_metadata"]["topic_id"] == "5"
+    exercise_names = {exercise["name"].lower() for exercise in planned["exercises"]}
+    assert "romanian deadlift" not in exercise_names
+    assert any("walk" in name for name in exercise_names)
+    assert context_response.status_code == 200
+    assert context_response.json()["active_planned_workout"]["id"] == planned["id"]
+    assert context_response.json()["profile"]["default_context"] == "grandparents_home"
+    assert len(context_response.json()["recent_health_summaries"]) == 0
+
+
+def test_workout_plan_complete_is_idempotent(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        plan_id = client.post(
+            "/workouts/plan",
+            json={
+                "plan_date": "2026-05-11",
+                "goal": "consistency",
+                "available_minutes": 25,
+                "location_context": "grandparents_home",
+                "equipment": [],
+            },
+        ).json()["id"]
+        started = client.patch(f"/workouts/plans/{plan_id}", json={"status": "started", "notes": "Started after lunch."})
+        first_complete = client.post(f"/workouts/plans/{plan_id}/complete", json={"notes": "Finished controlled."})
+        second_complete = client.post(f"/workouts/plans/{plan_id}/complete", json={"notes": "Duplicate Telegram click."})
+        sport_context = client.get("/context/sport")
+
+    assert started.status_code == 200
+    assert started.json()["status"] == "started"
+    assert first_complete.status_code == 200
+    assert second_complete.status_code == 200
+    assert first_complete.json()["status"] == "completed"
+    assert first_complete.json()["completed_workout_id"] == second_complete.json()["completed_workout_id"]
+    assert sport_context.json()["latest_workout"]["id"] == first_complete.json()["completed_workout_id"]
+
+
+def test_health_daily_summary_upsert_and_context(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        first = client.post(
+            "/health/daily-summaries",
+            json={
+                "summary_date": "2026-05-11",
+                "source": "apple_health",
+                "sleep_duration_minutes": 420,
+                "sleep_quality": 82,
+                "weight_kg": 117,
+                "body_fat_percent": 34.5,
+                "bmi": 38.2,
+                "steps": 3200,
+                "active_energy_kcal": 410,
+                "workouts_count": 1,
+                "resting_heart_rate": 62,
+                "average_heart_rate": 91,
+                "notes": "Initial wearable sync.",
+            },
+        )
+        second = client.post(
+            "/health/daily-summaries",
+            json={
+                "summary_date": "2026-05-11",
+                "source": "apple_health",
+                "weight_kg": 116.6,
+                "steps": 4000,
+                "notes": "Updated later.",
+            },
+        )
+        sport_context = client.get("/context/sport")
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
+    assert second.json()["weight_kg"] == 116.6
+    assert second.json()["steps"] == 4000
+    assert sport_context.json()["recent_health_summaries"][0]["id"] == first.json()["id"]
+
+
+def test_skipping_workout_plan_does_not_create_completed_workout(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        plan_id = client.post(
+            "/workouts/plan",
+            json={
+                "plan_date": "2026-05-11",
+                "goal": "fat_loss",
+                "available_minutes": 20,
+                "location_context": "grandparents_home",
+                "equipment": [],
+            },
+        ).json()["id"]
+        skipped = client.patch(f"/workouts/plans/{plan_id}", json={"status": "skipped", "notes": "Too tired."})
+        sport_context = client.get("/context/sport")
+
+    assert skipped.status_code == 200
+    assert skipped.json()["status"] == "skipped"
+    assert skipped.json()["completed_workout_id"] is None
+    assert sport_context.json()["active_planned_workout"] is None
+    assert sport_context.json()["latest_workout"] is None
+
+
 def test_finance_import_summary_and_affordability(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         import_response = client.post(

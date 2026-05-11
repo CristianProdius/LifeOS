@@ -26,6 +26,9 @@ required_files=(
   scripts/render-openclaw-config.sh
   scripts/openclaw-cron-setup.sh
   scripts/verify.sh
+  openclaw/workspace/AGENTS.md
+  openclaw/workspace/skills/lifeos/SKILL.md
+  services/lifeos-api/alembic/versions/0002_lifeos_v11_core.py
 )
 
 for path in "${required_files[@]}"; do

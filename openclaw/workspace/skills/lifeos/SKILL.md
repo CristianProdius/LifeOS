@@ -48,6 +48,7 @@ curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/busine
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/finance"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/food"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/review"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/profile"
 ```
 
 For writes, send JSON with `Content-Type: application/json`:
@@ -64,9 +65,37 @@ Use these routes as the first choice for common actions:
 - `POST /checkins` for morning, midday, evening, and relapse check-ins.
 - `POST /tasks` and `PATCH /tasks/{id}` for task creation and status changes.
 - `POST /habits/log` for habit completion, skips, misses, or notes.
-- `POST /workouts/recommend` and `POST /workouts/log` for training advice and logs.
+- `POST /workouts/plan`, `PATCH /workouts/plans/{id}`, and `POST /workouts/plans/{id}/complete` for proposed workouts, Telegram button changes, and completed workouts.
+- `POST /workouts/recommend` is legacy. Do not use it for Telegram Sport recommendations unless the user asks for an unsaved draft.
+- `POST /workouts/log` for direct manual workout logs.
+- `POST /health/daily-summaries` for Apple Health, Sleep Cycle, Xiaomi scale, or Shortcuts daily summary upserts.
 - `POST /finance/import`, `GET /finance/summary`, and `POST /finance/affordability` for finance flows.
 - `POST /daily/plan`, `POST /reviews/daily`, and `POST /reviews/weekly` for planning and reviews.
+
+## Sport Workout Flow
+
+When the user asks what workout to do today:
+
+1. Query `GET /context/sport`.
+2. Decide context. Default to `grandparents_home` unless the message mentions Chisinau, gym, pool, swimming, or equivalent.
+3. Create the plan with `POST /workouts/plan`.
+4. Send the returned workout visibly to Telegram with buttons.
+
+Home/grandparents default:
+
+- Use walking, mobility, chair squats, wall/incline push-ups, breathing, and gentle consistency work.
+- Do not recommend Romanian deadlifts, barbells, machines, swimming, or gym equipment unless the context says those are available.
+- Ask at most one clarification only if pain, injury, or unclear equipment makes the recommendation unsafe.
+
+Telegram workout buttons:
+
+- `Start` -> callback `lifeos:workout:{plan_id}:start` -> `PATCH /workouts/plans/{plan_id}` with `{"status":"started"}`.
+- `Done` -> callback `lifeos:workout:{plan_id}:done` -> `POST /workouts/plans/{plan_id}/complete`.
+- `Too hard` -> callback `lifeos:workout:{plan_id}:too_hard` -> `PATCH /workouts/plans/{plan_id}` with `{"status":"replaced","notes":"too_hard"}`, then propose an easier replacement.
+- `Change` -> callback `lifeos:workout:{plan_id}:change` -> ask one question or create a replacement if the desired change is obvious.
+- `Skip` -> callback `lifeos:workout:{plan_id}:skip` -> `PATCH /workouts/plans/{plan_id}` with `{"status":"skipped"}`.
+
+Use Telegram inline buttons with the `message` tool `interactive.blocks` payload when available. Button `value` must be deterministic and include the LifeOS id.
 
 ## LifeOS Writes
 

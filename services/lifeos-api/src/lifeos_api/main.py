@@ -30,6 +30,9 @@ from lifeos_api.models import (
     FinanceTransaction,
     HabitDefinition,
     HabitLog,
+    HealthDailySummary,
+    LifeProfile,
+    PlannedWorkout,
     Task,
     UploadedFile,
     WeeklyReview,
@@ -45,15 +48,31 @@ from lifeos_api.schemas import (
     FinanceImportDecisionRequest,
     FinanceImportRequest,
     HabitLogCreate,
+    HealthDailySummaryUpsert,
     HealthResponse,
+    LifeProfileUpdate,
     TaskCreate,
     TaskUpdate,
     WeeklyReviewCreate,
     WorkoutLogCreate,
+    WorkoutPlanComplete,
+    WorkoutPlanCreate,
+    WorkoutPlanUpdate,
     WorkoutRecommendationRequest,
 )
 from lifeos_api.seed import ensure_area, get_or_create_user, seed_reset_plan
 from lifeos_api.utils import money, slugify
+
+
+DEFAULT_PROFILE = {
+    "timezone": "Europe/Chisinau",
+    "default_context": "grandparents_home",
+    "training_level": "beginner_returning",
+    "goals": ["fat_loss", "consistency", "run_later"],
+    "equipment": {"walking_pad": "planned", "pull_up_bar": "planned"},
+}
+
+PLANNED_WORKOUT_STATUSES = {"proposed", "accepted", "started", "completed", "skipped", "replaced"}
 
 
 def create_app(database_url: str | None = None, seed_database: bool = True) -> FastAPI:
@@ -95,10 +114,31 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="database unavailable") from exc
         return {"status": "ok", "database": "ok", "seeded": app.state.seeded}
 
+    @app.get("/profile")
+    def get_profile(session: Session = Depends(get_session)) -> dict[str, Any]:
+        user, _ = get_or_create_user(session)
+        profile = get_or_create_life_profile(session, user.id)
+        session.commit()
+        session.refresh(profile)
+        return profile_to_dict(profile)
+
+    @app.patch("/profile")
+    def update_profile(payload: LifeProfileUpdate, session: Session = Depends(get_session)) -> dict[str, Any]:
+        user, _ = get_or_create_user(session)
+        profile = get_or_create_life_profile(session, user.id)
+        updates = payload.model_dump(exclude_unset=True)
+        for field, value in updates.items():
+            if value is not None:
+                setattr(profile, field, value)
+        session.commit()
+        session.refresh(profile)
+        return profile_to_dict(profile)
+
     @app.get("/context/{area_slug}")
     def get_context(area_slug: str, session: Session = Depends(get_session)) -> dict[str, Any]:
         user, _ = get_or_create_user(session)
-        area = session.scalar(select(Area).where(Area.user_id == user.id, Area.slug == slugify(area_slug)))
+        normalized_area_slug = slugify(area_slug)
+        area = session.scalar(select(Area).where(Area.user_id == user.id, Area.slug == normalized_area_slug))
         if area is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="area not found")
 
@@ -119,12 +159,40 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
             .limit(5)
         ).all()
 
-        return {
+        context = {
             "area": area_to_dict(area),
             "tasks": [task_to_dict(task) for task in tasks],
             "habits": [habit_to_dict(habit) for habit in habits],
             "recent_checkins": [checkin_to_dict(checkin) for checkin in checkins],
         }
+        if normalized_area_slug in {"sport", "daily", "food"}:
+            context["profile"] = profile_to_dict(get_or_create_life_profile(session, user.id))
+            context["recent_health_summaries"] = [
+                health_daily_summary_to_dict(summary)
+                for summary in session.scalars(
+                    select(HealthDailySummary)
+                    .where(HealthDailySummary.user_id == user.id)
+                    .order_by(HealthDailySummary.summary_date.desc(), HealthDailySummary.created_at.desc())
+                    .limit(7)
+                ).all()
+            ]
+        if normalized_area_slug == "sport":
+            active_plan = session.scalar(
+                select(PlannedWorkout)
+                .where(
+                    PlannedWorkout.user_id == user.id,
+                    PlannedWorkout.status.in_(["proposed", "accepted", "started"]),
+                )
+                .order_by(PlannedWorkout.plan_date.desc(), PlannedWorkout.created_at.desc())
+            )
+            latest_workout = session.scalar(
+                select(WorkoutSession)
+                .where(WorkoutSession.user_id == user.id)
+                .order_by(WorkoutSession.session_date.desc(), WorkoutSession.created_at.desc())
+            )
+            context["active_planned_workout"] = planned_workout_to_dict(active_plan) if active_plan else None
+            context["latest_workout"] = workout_to_dict(latest_workout) if latest_workout else None
+        return context
 
     @app.post("/checkins", status_code=status.HTTP_201_CREATED)
     def create_checkin(payload: CheckinCreate, session: Session = Depends(get_session)) -> dict[str, Any]:
@@ -249,6 +317,123 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         session.commit()
         session.refresh(workout)
         return workout_to_dict(workout)
+
+    @app.post("/workouts/plan", status_code=status.HTTP_201_CREATED)
+    def create_workout_plan(payload: WorkoutPlanCreate, session: Session = Depends(get_session)) -> dict[str, Any]:
+        user, _ = get_or_create_user(session)
+        profile = get_or_create_life_profile(session, user.id)
+        location_context = payload.location_context or profile.default_context
+        recommendation = build_planned_workout(
+            goal=payload.goal,
+            available_minutes=payload.available_minutes,
+            equipment=payload.equipment,
+            intensity=payload.intensity,
+            location_context=location_context,
+        )
+        plan = PlannedWorkout(
+            user_id=user.id,
+            plan_date=payload.plan_date,
+            status="proposed",
+            location_context=location_context,
+            goal=payload.goal,
+            intensity=payload.intensity,
+            duration_minutes=payload.available_minutes,
+            equipment=payload.equipment,
+            exercises=jsonable_encoder(recommendation["exercises"]),
+            telegram_metadata=jsonable_encoder(payload.telegram_metadata),
+            notes=payload.notes,
+        )
+        session.add(plan)
+        session.flush()
+        output = planned_workout_to_dict(plan)
+        session.add(
+            AdviceLog(
+                user_id=user.id,
+                advice_type="planned_workout",
+                input_payload=payload.model_dump(mode="json"),
+                output_payload=jsonable_encoder(output),
+            )
+        )
+        session.commit()
+        session.refresh(plan)
+        return planned_workout_to_dict(plan)
+
+    @app.patch("/workouts/plans/{plan_id}")
+    def update_workout_plan(plan_id: int, payload: WorkoutPlanUpdate, session: Session = Depends(get_session)) -> dict[str, Any]:
+        user, _ = get_or_create_user(session)
+        plan = get_planned_workout_or_404(session, user.id, plan_id)
+        updates = payload.model_dump(exclude_unset=True)
+        if "status" in updates and updates["status"] is not None:
+            if updates["status"] not in PLANNED_WORKOUT_STATUSES:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid planned workout status")
+            plan.status = updates["status"]
+        if "notes" in updates:
+            plan.notes = updates["notes"]
+        session.commit()
+        session.refresh(plan)
+        return planned_workout_to_dict(plan)
+
+    @app.post("/workouts/plans/{plan_id}/complete")
+    def complete_workout_plan(
+        plan_id: int,
+        payload: WorkoutPlanComplete,
+        session: Session = Depends(get_session),
+    ) -> dict[str, Any]:
+        user, _ = get_or_create_user(session)
+        plan = get_planned_workout_or_404(session, user.id, plan_id)
+        if plan.completed_workout_id is None:
+            workout = WorkoutSession(
+                user_id=user.id,
+                session_date=plan.plan_date,
+                workout_type=plan.goal,
+                duration_minutes=plan.duration_minutes,
+                intensity=plan.intensity,
+                notes=payload.notes or plan.notes,
+            )
+            workout.exercises = [
+                WorkoutExercise(**exercise_payload_from_plan(exercise)) for exercise in plan.exercises
+            ]
+            session.add(workout)
+            session.flush()
+            plan.completed_workout_id = workout.id
+        if payload.notes:
+            plan.notes = payload.notes
+        plan.status = "completed"
+        session.commit()
+        session.refresh(plan)
+        return planned_workout_to_dict(plan)
+
+    @app.post("/health/daily-summaries", status_code=status.HTTP_201_CREATED)
+    def upsert_health_daily_summary(
+        payload: HealthDailySummaryUpsert,
+        response: Response,
+        session: Session = Depends(get_session),
+    ) -> dict[str, Any]:
+        user, _ = get_or_create_user(session)
+        summary = session.scalar(
+            select(HealthDailySummary).where(
+                HealthDailySummary.user_id == user.id,
+                HealthDailySummary.summary_date == payload.summary_date,
+                HealthDailySummary.source == payload.source,
+            )
+        )
+        created = summary is None
+        if summary is None:
+            summary = HealthDailySummary(
+                user_id=user.id,
+                summary_date=payload.summary_date,
+                source=payload.source,
+            )
+            session.add(summary)
+        updates = payload.model_dump(exclude_unset=True)
+        updates.pop("summary_date", None)
+        updates.pop("source", None)
+        for field, value in updates.items():
+            setattr(summary, field, value)
+        session.commit()
+        session.refresh(summary)
+        response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return health_daily_summary_to_dict(summary)
 
     @app.post("/finance/import", status_code=status.HTTP_201_CREATED)
     def import_finance(payload: FinanceImportRequest, session: Session = Depends(get_session)) -> dict[str, Any]:
@@ -515,6 +700,26 @@ async def require_api_key(x_api_key: str | None = Header(default=None, alias="X-
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid API key")
 
 
+def get_or_create_life_profile(session: Session, user_id: int) -> LifeProfile:
+    profile = session.scalar(select(LifeProfile).where(LifeProfile.user_id == user_id))
+    if profile is None:
+        profile = LifeProfile(user_id=user_id, **DEFAULT_PROFILE)
+        session.add(profile)
+        session.flush()
+    return profile
+
+
+def profile_to_dict(profile: LifeProfile) -> dict[str, Any]:
+    return {
+        "id": profile.id,
+        "timezone": profile.timezone,
+        "default_context": profile.default_context,
+        "training_level": profile.training_level,
+        "goals": profile.goals,
+        "equipment": profile.equipment,
+    }
+
+
 def area_to_dict(area: Area) -> dict[str, Any]:
     return {"id": area.id, "slug": area.slug, "name": area.name, "description": area.description}
 
@@ -589,6 +794,46 @@ def workout_to_dict(workout: WorkoutSession) -> dict[str, Any]:
     }
 
 
+def planned_workout_to_dict(plan: PlannedWorkout) -> dict[str, Any]:
+    return {
+        "id": plan.id,
+        "plan_date": plan.plan_date,
+        "status": plan.status,
+        "location_context": plan.location_context,
+        "goal": plan.goal,
+        "intensity": plan.intensity,
+        "duration_minutes": plan.duration_minutes,
+        "equipment": plan.equipment,
+        "exercises": plan.exercises,
+        "telegram_metadata": plan.telegram_metadata,
+        "notes": plan.notes,
+        "completed_workout_id": plan.completed_workout_id,
+        "created_at": plan.created_at,
+        "updated_at": plan.updated_at,
+    }
+
+
+def health_daily_summary_to_dict(summary: HealthDailySummary) -> dict[str, Any]:
+    return {
+        "id": summary.id,
+        "summary_date": summary.summary_date,
+        "source": summary.source,
+        "sleep_duration_minutes": summary.sleep_duration_minutes,
+        "sleep_quality": summary.sleep_quality,
+        "weight_kg": summary.weight_kg,
+        "body_fat_percent": summary.body_fat_percent,
+        "bmi": summary.bmi,
+        "steps": summary.steps,
+        "active_energy_kcal": summary.active_energy_kcal,
+        "workouts_count": summary.workouts_count,
+        "resting_heart_rate": summary.resting_heart_rate,
+        "average_heart_rate": summary.average_heart_rate,
+        "notes": summary.notes,
+        "created_at": summary.created_at,
+        "updated_at": summary.updated_at,
+    }
+
+
 def build_workout_recommendation(payload: WorkoutRecommendationRequest) -> dict[str, Any]:
     equipment = {item.lower() for item in payload.equipment}
     goal = payload.goal.lower()
@@ -619,6 +864,67 @@ def build_workout_recommendation(payload: WorkoutRecommendationRequest) -> dict[
         "equipment": payload.equipment,
         "exercises": exercises,
     }
+
+
+def build_planned_workout(
+    *,
+    goal: str,
+    available_minutes: int,
+    equipment: list[str],
+    intensity: str,
+    location_context: str,
+) -> dict[str, Any]:
+    normalized_location = slugify(location_context).replace("-", "_")
+    equipment_set = {slugify(item).replace("-", "_") for item in equipment}
+    if normalized_location in {"grandparents_home", "home"}:
+        exercises = [
+            {"name": "Easy walk", "duration_seconds": min(available_minutes, 20) * 60, "notes": "Nose-breathing pace if possible."},
+            {"name": "Mobility flow", "duration_seconds": 360, "notes": "Hips, ankles, thoracic spine, shoulders."},
+            {"name": "Chair squats", "sets": 2, "reps": 8, "notes": "Stop if knees hurt."},
+            {"name": "Wall push-ups", "sets": 2, "reps": 8, "notes": "Keep it easy and controlled."},
+            {"name": "Breathing downshift", "duration_seconds": 180},
+        ]
+    elif normalized_location in {"chisinau_pool", "pool", "swimming"}:
+        exercises = [
+            {"name": "Easy swim warm-up", "duration_seconds": 600},
+            {"name": "Technique laps", "duration_seconds": max((available_minutes - 20) * 60, 600), "notes": "Easy effort, long rests."},
+            {"name": "Pool cooldown", "duration_seconds": 300},
+        ]
+    elif normalized_location in {"chisinau_gym", "gym"} or equipment_set:
+        exercises = [
+            {"name": "Treadmill walk", "duration_seconds": 480, "notes": "Warm up at easy pace."},
+            {"name": "Leg press", "sets": 2, "reps": 10, "notes": "RPE 6-7, controlled depth."},
+            {"name": "Chest press", "sets": 2, "reps": 10},
+            {"name": "Lat pulldown", "sets": 2, "reps": 10},
+            {"name": "Stationary bike", "duration_seconds": max((available_minutes - 25) * 60, 300), "notes": "Zone 2 finish."},
+        ]
+    else:
+        exercises = [
+            {"name": "Easy walk", "duration_seconds": max((available_minutes - 8) * 60, 600)},
+            {"name": "Mobility flow", "duration_seconds": 300},
+            {"name": "Breathing downshift", "duration_seconds": 180},
+        ]
+
+    return {
+        "goal": goal,
+        "available_minutes": available_minutes,
+        "intensity": intensity,
+        "location_context": location_context,
+        "equipment": equipment,
+        "exercises": exercises,
+    }
+
+
+def exercise_payload_from_plan(exercise: dict[str, Any]) -> dict[str, Any]:
+    allowed = {"name", "sets", "reps", "weight", "duration_seconds", "notes"}
+    return {key: value for key, value in exercise.items() if key in allowed and value is not None}
+
+
+def get_planned_workout_or_404(session: Session, user_id: int, plan_id: int) -> PlannedWorkout:
+    plan = session.scalar(select(PlannedWorkout).where(PlannedWorkout.id == plan_id, PlannedWorkout.user_id == user_id))
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="planned workout not found")
+    return plan
 
 
 def rows_from_import_payload(payload: FinanceImportRequest) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:

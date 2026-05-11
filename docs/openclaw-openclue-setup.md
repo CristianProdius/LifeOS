@@ -140,6 +140,36 @@ At 07:00, OpenClue reads LifeOS again, then proposes the daily plan. The plan sh
 
 When the user presses a button, OpenClue updates LifeOS first, re-queries the changed state, then acknowledges the result in Daily or the owning topic.
 
+## Sport Workout Flow
+
+Sport recommendations must be stored before OpenClue presents them as today's plan.
+
+1. User asks for a workout in Sport.
+2. OpenClue calls `GET /context/sport`.
+3. OpenClue creates a proposed plan with `POST /workouts/plan`.
+4. OpenClue sends the returned workout visibly in Sport with inline buttons.
+5. Button callbacks update LifeOS first, then OpenClue re-queries and acknowledges in Sport.
+
+Default context is `grandparents_home`. OpenClue should only switch to gym, pool, or Chisinau when the user says that context explicitly. At home, recommendations should use walking, mobility, gentle bodyweight, and recovery; avoid gym-equipment work such as Romanian deadlifts.
+
+Workout button callback values:
+
+```text
+lifeos:workout:{plan_id}:start
+lifeos:workout:{plan_id}:done
+lifeos:workout:{plan_id}:too_hard
+lifeos:workout:{plan_id}:change
+lifeos:workout:{plan_id}:skip
+```
+
+Daily task buttons should use the same LifeOS-first rule with deterministic values such as `lifeos:task:{task_id}:done`, `lifeos:task:{task_id}:block`, and `lifeos:task:{task_id}:snooze_tomorrow`.
+
+## Health Summary Extension Point
+
+V1.1 stores daily health summaries, not raw health samples. Use `POST /health/daily-summaries` for future Apple Health, Apple Watch, Sleep Cycle, Xiaomi scale, or iOS Shortcuts input. The summary can include sleep duration and quality, weight, body fat, BMI, steps, active energy, workout count, resting heart rate, average heart rate, and notes.
+
+The VPS cannot directly pull Apple Health data. A later iOS app or Shortcut must push data into LifeOS after the user grants permission on the phone/watch.
+
 ## Finance Import Flow
 
 Use the Finance topic for imports and reconciliation.
@@ -250,7 +280,9 @@ iPhone automation:
 - Disallowed user or group is rejected.
 - Message in each forum topic routes to the same topic when intent matches.
 - Task, habit, workout, finance, and plan advice each triggers a LifeOS read before the answer.
+- Sport workout advice creates a `planned_workout` row before OpenClue sends the Telegram workout.
 - A Telegram button updates LifeOS before OpenClue acknowledges success.
+- Repeated workout `Done` clicks do not create duplicate completed workouts.
 - Finance import dry run creates review items without inventing balances.
 - Cron dry run sends 06:35, 07:00, 12:30, 21:30, and Sunday 20:00 reminders to the configured topics.
 - Admin receives diagnostics for a forced LifeOS API failure without secrets in the log output.

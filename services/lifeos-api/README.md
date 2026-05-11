@@ -26,10 +26,13 @@ DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/lifeos uv run --pytho
 The first migration creates the full v1 schema:
 
 - users and areas
+- life profile
 - tasks and task templates
 - habit definitions and logs
 - checkins
 - workout sessions and exercises
+- planned workouts
+- health daily summaries
 - finance accounts, transactions, categories, budgets, goals, and imports
 - uploaded files
 - daily plans, daily reviews, weekly reviews
@@ -45,6 +48,8 @@ docker run --rm -p 8080:8080 -e PORT=8080 -e LIFEOS_API_KEY=replace-me -e DATABA
 ## Endpoints
 
 - `GET /health`
+- `GET /profile`
+- `PATCH /profile`
 - `GET /context/{area}`
 - `POST /checkins`
 - `POST /tasks`
@@ -52,6 +57,10 @@ docker run --rm -p 8080:8080 -e PORT=8080 -e LIFEOS_API_KEY=replace-me -e DATABA
 - `POST /habits/log`
 - `POST /workouts/recommend`
 - `POST /workouts/log`
+- `POST /workouts/plan`
+- `PATCH /workouts/plans/{id}`
+- `POST /workouts/plans/{id}/complete`
+- `POST /health/daily-summaries`
 - `POST /finance/import`
 - `POST /finance/import/{id}/approve`
 - `POST /finance/import/{id}/reject`

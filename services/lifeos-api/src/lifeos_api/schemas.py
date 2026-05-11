@@ -42,6 +42,14 @@ class HabitLogCreate(StrictModel):
     notes: str | None = None
 
 
+class LifeProfileUpdate(StrictModel):
+    timezone: str | None = Field(default=None, min_length=1, max_length=80)
+    default_context: str | None = Field(default=None, min_length=1, max_length=80)
+    training_level: str | None = Field(default=None, min_length=1, max_length=80)
+    goals: list[str] | None = Field(default=None, max_length=20)
+    equipment: dict[str, str] | None = None
+
+
 class WorkoutRecommendationRequest(StrictModel):
     goal: str = Field(default="general", min_length=1, max_length=80)
     available_minutes: int = Field(default=30, ge=10, le=180)
@@ -65,6 +73,42 @@ class WorkoutLogCreate(StrictModel):
     intensity: str = Field(default="moderate", max_length=40)
     notes: str | None = None
     exercises: list[WorkoutExercisePayload] = Field(default_factory=list)
+
+
+class WorkoutPlanCreate(StrictModel):
+    plan_date: date
+    goal: str = Field(default="fat_loss", min_length=1, max_length=80)
+    available_minutes: int = Field(default=30, ge=10, le=180)
+    location_context: str | None = Field(default=None, min_length=1, max_length=80)
+    equipment: list[str] = Field(default_factory=list, max_length=20)
+    intensity: str = Field(default="easy", min_length=1, max_length=40)
+    telegram_metadata: dict[str, Any] = Field(default_factory=dict)
+    notes: str | None = None
+
+
+class WorkoutPlanUpdate(StrictModel):
+    status: str | None = Field(default=None, min_length=1, max_length=40)
+    notes: str | None = None
+
+
+class WorkoutPlanComplete(StrictModel):
+    notes: str | None = None
+
+
+class HealthDailySummaryUpsert(StrictModel):
+    summary_date: date
+    source: str = Field(min_length=1, max_length=80)
+    sleep_duration_minutes: int | None = Field(default=None, ge=0, le=1440)
+    sleep_quality: int | None = Field(default=None, ge=0, le=100)
+    weight_kg: float | None = Field(default=None, ge=0)
+    body_fat_percent: float | None = Field(default=None, ge=0, le=100)
+    bmi: float | None = Field(default=None, ge=0)
+    steps: int | None = Field(default=None, ge=0)
+    active_energy_kcal: int | None = Field(default=None, ge=0)
+    workouts_count: int | None = Field(default=None, ge=0)
+    resting_heart_rate: int | None = Field(default=None, ge=0)
+    average_heart_rate: int | None = Field(default=None, ge=0)
+    notes: str | None = None
 
 
 class FinanceImportRequest(StrictModel):
