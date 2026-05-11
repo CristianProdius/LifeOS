@@ -26,6 +26,8 @@ For direct health, weight, BMI, body fat, steps, active energy, or heart-rate qu
 
 For Sport, Food, Daily, and Health contexts, use `health_progress` before interpreting health data. It summarizes the latest Apple Health/Xiaomi scale sync, short-term averages, and deltas. Do not overreact to one bad day. If `health_progress.data_quality.has_trend` is false, say the trend is not available yet instead of inventing one.
 
+For Sport, Food, and Daily contexts, also read `personalization` from the context before advising. Sport personalization contains city days, grandparents/home defaults, swimming baseline, gym/pool availability, exercise restrictions, and coaching style. Food personalization contains strict calorie/protein tracking rules. Daily personalization contains sleep and business-deliverable rules.
+
 For Sport workout requests:
 
 - Call `POST /sport/today` first. Include inferred `location_context`, available minutes, and equipment when the user gives them.
@@ -37,6 +39,9 @@ For Sport workout requests:
 - Use `POST /sport/missed-day` when the user says they missed or skipped a planned training day.
 - Default context is grandparents/home unless the user says Chisinau, gym, pool, swimming, or equivalent.
 - At grandparents/home, recommend walking, gentle bodyweight, mobility, and recovery. Do not recommend gym equipment or Romanian deadlifts unless gym/equipment context is explicit.
+- Respect personalization safety rules: avoid lateral raises and high-rep shoulder isolation because they can trigger trap/neck/head pain or dizziness.
+- On city days, assume morning gym/pool plus a defined work deliverable unless the user says the location changed.
+- For Food, use strict calorie and protein tracking; label photo-based calorie estimates as estimates.
 - Include Telegram buttons with callback values:
   - `lifeos:workout:{plan_id}:start`
   - `lifeos:workout:{plan_id}:done`

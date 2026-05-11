@@ -96,8 +96,10 @@ When the user asks what workout to do today:
 
 1. Call `POST /sport/today`.
 2. Include inferred `location_context`, `available_minutes`, and `equipment` only when known from the user's message or topic context.
-3. Read the returned `planned_workout`, `current_week`, and `program_reason`. Do not invent a different workout.
+3. Read the returned `planned_workout`, `current_week`, `program_reason`, and context `personalization`. Do not invent a different workout.
 4. Send the returned workout visibly to Telegram with buttons.
+
+The Sport personalization block is part of the contract. It encodes city days, city morning gym/pool defaults, grandparents/home midday training, swimming baseline, free-weight preference with beginner-returning limits, and exercise restrictions. Avoid lateral raises and high-rep shoulder isolation. If neck/head pain or dizziness appears, tell Cristian to stop that exercise and choose a safer option.
 
 When the user asks whether they are on track, asks about goal success, or asks about progress:
 
@@ -116,6 +118,13 @@ Home/grandparents default:
 - Use walking, mobility, chair squats, wall/incline push-ups, breathing, and gentle consistency work.
 - Do not recommend Romanian deadlifts, barbells, machines, swimming, or gym equipment unless the context says those are available.
 - Ask at most one clarification only if pain, injury, or unclear equipment makes the recommendation unsafe.
+
+Food and Daily personalization:
+
+- Use strict calorie and protein tracking in Food.
+- Treat photo-based calories as estimates unless exact labels or weights are provided.
+- City days still require a defined work deliverable before the work block starts.
+- Poor sleep should reduce training intensity and narrow the business task.
 
 Telegram workout buttons:
 

@@ -694,11 +694,16 @@ def test_openclue_uses_sport_program_engine_for_sport_workouts():
     agents = (repo_root / "openclaw/workspace/AGENTS.md").read_text()
     skill = (repo_root / "openclaw/workspace/skills/lifeos/SKILL.md").read_text()
     config = (repo_root / "openclaw/config/openclaw.template.json").read_text()
+    setup_docs = (repo_root / "docs/openclaw-openclue-setup.md").read_text()
 
-    for text in [agents, skill, config]:
+    for text in [agents, skill, config, setup_docs]:
         assert "/sport/today" in text
         assert "/sport/progress" in text
         assert "/sport/missed-day" in text
+        assert "personalization" in text
+        assert "lateral raises" in text
+        assert "strict calorie" in text
+        assert "city days" in text
     assert "Do not call /workouts/recommend for Telegram Sport" in skill
     assert "query /context/sport first, use health_progress plus recent workouts" not in config
 
