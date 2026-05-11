@@ -204,6 +204,77 @@ class PlannedWorkout(TimestampMixin, Base):
     telegram_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
     completed_workout_id: Mapped[int | None] = mapped_column(ForeignKey("workout_sessions.id", ondelete="SET NULL"))
+    program_id: Mapped[int | None] = mapped_column(ForeignKey("training_programs.id", ondelete="SET NULL"))
+    program_week_id: Mapped[int | None] = mapped_column(ForeignKey("training_program_weeks.id", ondelete="SET NULL"))
+    program_day: Mapped[int | None] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(40), default="manual", nullable=False)
+    adaptation_reason: Mapped[str | None] = mapped_column(String(120))
+
+
+class SportGoal(TimestampMixin, Base):
+    __tablename__ = "sport_goals"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_sport_goals_user_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="active", nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    start_weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    target_weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    target_date: Mapped[date] = mapped_column(Date, nullable=False)
+    stretch_weight_kg: Mapped[float | None] = mapped_column(Float)
+    stretch_date: Mapped[date | None] = mapped_column(Date)
+    healthy_weekly_loss_min_kg: Mapped[float] = mapped_column(Float, default=0.45, nullable=False)
+    healthy_weekly_loss_max_kg: Mapped[float] = mapped_column(Float, default=0.9, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class TrainingProgram(TimestampMixin, Base):
+    __tablename__ = "training_programs"
+    __table_args__ = (UniqueConstraint("user_id", "sport_goal_id", "name", name="uq_training_programs_user_goal_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    sport_goal_id: Mapped[int] = mapped_column(ForeignKey("sport_goals.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="active", nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    duration_weeks: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_week_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    default_location_context: Mapped[str] = mapped_column(String(80), default="grandparents_home", nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+class TrainingProgramWeek(TimestampMixin, Base):
+    __tablename__ = "training_program_weeks"
+    __table_args__ = (UniqueConstraint("program_id", "week_number", name="uq_training_program_weeks_program_week"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    program_id: Mapped[int] = mapped_column(ForeignKey("training_programs.id", ondelete="CASCADE"), nullable=False)
+    week_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    phase: Mapped[str] = mapped_column(String(80), nullable=False)
+    week_start: Mapped[date] = mapped_column(Date, nullable=False)
+    week_end: Mapped[date] = mapped_column(Date, nullable=False)
+    target_weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    target_steps_avg: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_active_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_strength_sessions: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_cardio_sessions: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_recovery_sessions: Mapped[int] = mapped_column(Integer, nullable=False)
+    plan_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class ProgramAdjustment(TimestampMixin, Base):
+    __tablename__ = "program_adjustments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    program_id: Mapped[int] = mapped_column(ForeignKey("training_programs.id", ondelete="CASCADE"), nullable=False)
+    adjustment_date: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str] = mapped_column(String(80), nullable=False)
+    input_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    output_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
 
 
 class HealthDailySummary(TimestampMixin, Base):

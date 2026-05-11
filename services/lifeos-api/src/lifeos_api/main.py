@@ -8,7 +8,7 @@ import io
 import json
 import os
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pandas as pd
@@ -34,7 +34,11 @@ from lifeos_api.models import (
     HealthDailySummary,
     LifeProfile,
     PlannedWorkout,
+    ProgramAdjustment,
+    SportGoal,
     Task,
+    TrainingProgram,
+    TrainingProgramWeek,
     UploadedFile,
     WeeklyReview,
     WorkoutExercise,
@@ -61,7 +65,7 @@ from lifeos_api.schemas import (
     WorkoutPlanUpdate,
     WorkoutRecommendationRequest,
 )
-from lifeos_api.seed import ensure_area, get_or_create_user, seed_reset_plan
+from lifeos_api.seed import ensure_area, get_or_create_user, seed_reset_plan, seed_sport_program
 from lifeos_api.utils import money, slugify
 
 
@@ -202,6 +206,18 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
             context["active_planned_workout"] = planned_workout_to_dict(active_plan) if active_plan else None
             context["latest_workout"] = workout_to_dict(latest_workout) if latest_workout else None
         return context
+
+    @app.post("/sport/program/seed")
+    def seed_sport_program_endpoint(response: Response, session: Session = Depends(get_session)) -> dict[str, Any]:
+        user, _ = get_or_create_user(session)
+        result = seed_sport_program(session, user.id)
+        response.status_code = status.HTTP_201_CREATED if result["created"] else status.HTTP_200_OK
+        return sport_program_context(session, user.id)
+
+    @app.get("/sport/program/active")
+    def get_active_sport_program(session: Session = Depends(get_session)) -> dict[str, Any]:
+        user, _ = get_or_create_user(session)
+        return sport_program_context(session, user.id)
 
     @app.post("/checkins", status_code=status.HTTP_201_CREATED)
     def create_checkin(payload: CheckinCreate, session: Session = Depends(get_session)) -> dict[str, Any]:
@@ -764,6 +780,112 @@ def get_or_create_life_profile(session: Session, user_id: int) -> LifeProfile:
     return profile
 
 
+def sport_program_context(session: Session, user_id: int, reference_date: date | None = None) -> dict[str, Any]:
+    goal, program = get_active_sport_goal_and_program(session, user_id)
+    current_week = get_current_program_week(session, program, reference_date)
+    health_summaries = recent_health_summaries(session, user_id)
+    next_plan = session.scalar(
+        select(PlannedWorkout)
+        .where(
+            PlannedWorkout.user_id == user_id,
+            PlannedWorkout.program_id == program.id,
+            PlannedWorkout.status.in_(["proposed", "accepted", "started"]),
+        )
+        .order_by(PlannedWorkout.plan_date.asc(), PlannedWorkout.created_at.desc())
+        .limit(1)
+    )
+    return {
+        "goal": sport_goal_to_dict(goal),
+        "program": training_program_to_dict(program),
+        "current_week": training_program_week_to_dict(current_week),
+        "health_progress": build_health_progress(health_summaries),
+        "weekly_adherence": weekly_adherence(session, user_id, current_week),
+        "next_planned_workout": planned_workout_to_dict(next_plan) if next_plan else None,
+    }
+
+
+def get_active_sport_goal_and_program(session: Session, user_id: int) -> tuple[SportGoal, TrainingProgram]:
+    goal = session.scalar(
+        select(SportGoal).where(SportGoal.user_id == user_id, SportGoal.status == "active").order_by(SportGoal.created_at.desc())
+    )
+    program = None
+    if goal is not None:
+        program = session.scalar(
+            select(TrainingProgram).where(
+                TrainingProgram.user_id == user_id,
+                TrainingProgram.sport_goal_id == goal.id,
+                TrainingProgram.status == "active",
+            )
+        )
+    if goal is None or program is None:
+        seed_sport_program(session, user_id)
+        goal = session.scalar(
+            select(SportGoal).where(SportGoal.user_id == user_id, SportGoal.status == "active").order_by(SportGoal.created_at.desc())
+        )
+        program = session.scalar(
+            select(TrainingProgram).where(
+                TrainingProgram.user_id == user_id,
+                TrainingProgram.sport_goal_id == goal.id,
+                TrainingProgram.status == "active",
+            )
+        )
+    if goal is None or program is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="sport program seed failed")
+    return goal, program
+
+
+def get_current_program_week(
+    session: Session,
+    program: TrainingProgram,
+    reference_date: date | None = None,
+) -> TrainingProgramWeek:
+    reference_date = reference_date or date.today()
+    elapsed_days = max((reference_date - program.start_date).days, 0)
+    week_number = min((elapsed_days // 7) + 1, program.duration_weeks)
+    if program.current_week_number != week_number:
+        program.current_week_number = week_number
+        session.flush()
+    week = session.scalar(
+        select(TrainingProgramWeek).where(
+            TrainingProgramWeek.program_id == program.id,
+            TrainingProgramWeek.week_number == week_number,
+        )
+    )
+    if week is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="current sport program week missing")
+    return week
+
+
+def recent_health_summaries(session: Session, user_id: int, limit: int = 14) -> list[HealthDailySummary]:
+    return list(
+        session.scalars(
+            select(HealthDailySummary)
+            .where(HealthDailySummary.user_id == user_id)
+            .order_by(HealthDailySummary.summary_date.desc(), HealthDailySummary.updated_at.desc())
+            .limit(limit)
+        ).all()
+    )
+
+
+def weekly_adherence(session: Session, user_id: int, week: TrainingProgramWeek) -> dict[str, Any]:
+    workouts = session.scalars(
+        select(PlannedWorkout).where(
+            PlannedWorkout.user_id == user_id,
+            PlannedWorkout.program_week_id == week.id,
+        )
+    ).all()
+    completed = [workout for workout in workouts if workout.status == "completed"]
+    skipped = [workout for workout in workouts if workout.status == "skipped"]
+    target_sessions = week.target_strength_sessions + week.target_cardio_sessions
+    completion_rate = round(len(completed) / target_sessions, 2) if target_sessions else 0
+    return {
+        "target_sessions": target_sessions,
+        "completed_sessions": len(completed),
+        "skipped_sessions": len(skipped),
+        "completion_rate": min(completion_rate, 1),
+    }
+
+
 def profile_to_dict(profile: LifeProfile) -> dict[str, Any]:
     return {
         "id": profile.id,
@@ -863,8 +985,62 @@ def planned_workout_to_dict(plan: PlannedWorkout) -> dict[str, Any]:
         "telegram_metadata": plan.telegram_metadata,
         "notes": plan.notes,
         "completed_workout_id": plan.completed_workout_id,
+        "program_id": plan.program_id,
+        "program_week_id": plan.program_week_id,
+        "program_day": plan.program_day,
+        "source": plan.source,
+        "adaptation_reason": plan.adaptation_reason,
         "created_at": plan.created_at,
         "updated_at": plan.updated_at,
+    }
+
+
+def sport_goal_to_dict(goal: SportGoal) -> dict[str, Any]:
+    return {
+        "id": goal.id,
+        "name": goal.name,
+        "status": goal.status,
+        "start_date": goal.start_date,
+        "start_weight_kg": goal.start_weight_kg,
+        "target_weight_kg": goal.target_weight_kg,
+        "target_date": goal.target_date,
+        "stretch_weight_kg": goal.stretch_weight_kg,
+        "stretch_date": goal.stretch_date,
+        "healthy_weekly_loss_min_kg": goal.healthy_weekly_loss_min_kg,
+        "healthy_weekly_loss_max_kg": goal.healthy_weekly_loss_max_kg,
+        "notes": goal.notes,
+    }
+
+
+def training_program_to_dict(program: TrainingProgram) -> dict[str, Any]:
+    return {
+        "id": program.id,
+        "sport_goal_id": program.sport_goal_id,
+        "name": program.name,
+        "status": program.status,
+        "start_date": program.start_date,
+        "duration_weeks": program.duration_weeks,
+        "current_week_number": program.current_week_number,
+        "default_location_context": program.default_location_context,
+        "notes": program.notes,
+    }
+
+
+def training_program_week_to_dict(week: TrainingProgramWeek) -> dict[str, Any]:
+    return {
+        "id": week.id,
+        "program_id": week.program_id,
+        "week_number": week.week_number,
+        "phase": week.phase,
+        "week_start": week.week_start,
+        "week_end": week.week_end,
+        "target_weight_kg": week.target_weight_kg,
+        "target_steps_avg": week.target_steps_avg,
+        "target_active_minutes": week.target_active_minutes,
+        "target_strength_sessions": week.target_strength_sessions,
+        "target_cardio_sessions": week.target_cardio_sessions,
+        "target_recovery_sessions": week.target_recovery_sessions,
+        "plan_json": week.plan_json,
     }
 
 

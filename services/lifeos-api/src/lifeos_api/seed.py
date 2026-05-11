@@ -12,15 +12,23 @@ from lifeos_api.models import (
     FinanceCategory,
     FinanceGoal,
     HabitDefinition,
+    HealthDailySummary,
     LifeProfile,
+    SportGoal,
     TaskTemplate,
     Task,
+    TrainingProgram,
+    TrainingProgramWeek,
     User,
 )
 from lifeos_api.utils import slugify
 
 
 DEFAULT_USER_EMAIL = "default@lifeos.local"
+SPORT_PROGRAM_START = date(2026, 5, 11)
+SPORT_PROGRAM_END = date(2027, 2, 8)
+SPORT_STRETCH_DATE = date(2026, 8, 31)
+SPORT_PROGRAM_WEEKS = 39
 
 
 AREA_SEED = [
@@ -222,7 +230,134 @@ def seed_reset_plan(session: Session) -> dict[str, int]:
             created += 1
 
     session.commit()
+    created += seed_sport_program(session, user.id)["created"]
     return {"created": created}
+
+
+def seed_sport_program(session: Session, user_id: int) -> dict[str, int]:
+    created = 0
+    latest_weight = session.scalar(
+        select(HealthDailySummary.weight_kg)
+        .where(HealthDailySummary.user_id == user_id, HealthDailySummary.weight_kg.is_not(None))
+        .order_by(HealthDailySummary.summary_date.desc(), HealthDailySummary.updated_at.desc())
+        .limit(1)
+    )
+    start_weight = round(float(latest_weight), 2) if latest_weight is not None else 117.0
+
+    goal = session.scalar(select(SportGoal).where(SportGoal.user_id == user_id, SportGoal.name == "Cut to 90 kg"))
+    if goal is None:
+        goal = SportGoal(
+            user_id=user_id,
+            name="Cut to 90 kg",
+            status="active",
+            start_date=SPORT_PROGRAM_START,
+            start_weight_kg=start_weight,
+            target_weight_kg=90.0,
+            target_date=SPORT_PROGRAM_END,
+            stretch_weight_kg=95.0,
+            stretch_date=SPORT_STRETCH_DATE,
+            healthy_weekly_loss_min_kg=0.45,
+            healthy_weekly_loss_max_kg=0.9,
+            notes="Main goal is 90 kg as fast as healthy; 95 kg by 2026-08-31 is a stretch milestone.",
+        )
+        session.add(goal)
+        session.flush()
+        created += 1
+    elif goal.status != "active":
+        goal.status = "active"
+
+    program = session.scalar(
+        select(TrainingProgram).where(
+            TrainingProgram.user_id == user_id,
+            TrainingProgram.sport_goal_id == goal.id,
+            TrainingProgram.name == "39-week fat loss base",
+        )
+    )
+    if program is None:
+        program = TrainingProgram(
+            user_id=user_id,
+            sport_goal_id=goal.id,
+            name="39-week fat loss base",
+            status="active",
+            start_date=SPORT_PROGRAM_START,
+            duration_weeks=SPORT_PROGRAM_WEEKS,
+            current_week_number=1,
+            default_location_context="grandparents_home",
+            notes="Adaptive beginner-returning program emphasizing walking, consistency, strength basics, and safe progression.",
+        )
+        session.add(program)
+        session.flush()
+        created += 1
+
+    for week_number in range(1, SPORT_PROGRAM_WEEKS + 1):
+        week = session.scalar(
+            select(TrainingProgramWeek).where(
+                TrainingProgramWeek.program_id == program.id,
+                TrainingProgramWeek.week_number == week_number,
+            )
+        )
+        if week is None:
+            week = TrainingProgramWeek(
+                program_id=program.id,
+                week_number=week_number,
+                phase=sport_phase_for_week(week_number),
+                week_start=SPORT_PROGRAM_START + timedelta(days=(week_number - 1) * 7),
+                week_end=SPORT_PROGRAM_START + timedelta(days=(week_number * 7) - 1),
+                target_weight_kg=round(goal.start_weight_kg - ((goal.start_weight_kg - goal.target_weight_kg) * (week_number / SPORT_PROGRAM_WEEKS)), 2),
+                target_steps_avg=sport_steps_for_week(week_number),
+                target_active_minutes=sport_active_minutes_for_week(week_number),
+                target_strength_sessions=1 if week_number <= 2 else 2 if week_number <= 12 else 3,
+                target_cardio_sessions=3 if week_number <= 4 else 4 if week_number <= 24 else 5,
+                target_recovery_sessions=2,
+                plan_json=sport_week_plan_json(week_number),
+            )
+            session.add(week)
+            created += 1
+
+    session.commit()
+    return {"created": created}
+
+
+def sport_phase_for_week(week_number: int) -> str:
+    if week_number <= 4:
+        return "consistency_base"
+    if week_number <= 12:
+        return "weekly_rhythm"
+    if week_number <= 24:
+        return "fat_loss_engine"
+    if week_number <= 32:
+        return "run_walk_introduction"
+    return "consolidation"
+
+
+def sport_steps_for_week(week_number: int) -> int:
+    return min(4500 + (week_number - 1) * 175, 9000)
+
+
+def sport_active_minutes_for_week(week_number: int) -> int:
+    if week_number <= 4:
+        return 150
+    if week_number <= 12:
+        return 180
+    if week_number <= 24:
+        return 220
+    return 240
+
+
+def sport_week_plan_json(week_number: int) -> dict[str, object]:
+    phase = sport_phase_for_week(week_number)
+    return {
+        "phase": phase,
+        "days": [
+            {"day": 1, "focus": "easy_cardio_strength"},
+            {"day": 2, "focus": "walk_mobility"},
+            {"day": 3, "focus": "easy_cardio"},
+            {"day": 4, "focus": "strength_basics"},
+            {"day": 5, "focus": "walk_mobility"},
+            {"day": 6, "focus": "long_walk"},
+            {"day": 7, "focus": "recovery"},
+        ],
+    }
 
 
 def ensure_area(session: Session, user_id: int, area_name: str) -> Area:

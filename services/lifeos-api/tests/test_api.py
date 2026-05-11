@@ -66,6 +66,24 @@ def test_seed_reset_plan_is_idempotent(tmp_path, monkeypatch):
     assert template_count == 14
 
 
+def test_sport_program_seed_is_idempotent_and_visible(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        first = client.post("/sport/program/seed")
+        second = client.post("/sport/program/seed")
+        active = client.get("/sport/program/active")
+
+    assert first.status_code in {200, 201}
+    assert second.status_code == 200
+    assert active.status_code == 200
+    payload = active.json()
+    assert payload["goal"]["name"] == "Cut to 90 kg"
+    assert payload["goal"]["target_weight_kg"] == 90
+    assert payload["goal"]["stretch_weight_kg"] == 95
+    assert payload["goal"]["stretch_date"] == "2026-08-31"
+    assert payload["program"]["duration_weeks"] == 39
+    assert payload["current_week"]["week_number"] == 1
+
+
 def test_tasks_can_be_created_patched_and_read_in_area_context(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         create_response = client.post(
