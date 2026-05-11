@@ -358,6 +358,12 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         session.refresh(plan)
         return planned_workout_to_dict(plan)
 
+    @app.get("/workouts/plans/{plan_id}")
+    def get_workout_plan(plan_id: int, session: Session = Depends(get_session)) -> dict[str, Any]:
+        user, _ = get_or_create_user(session)
+        plan = get_planned_workout_or_404(session, user.id, plan_id)
+        return planned_workout_to_dict(plan)
+
     @app.patch("/workouts/plans/{plan_id}")
     def update_workout_plan(plan_id: int, payload: WorkoutPlanUpdate, session: Session = Depends(get_session)) -> dict[str, Any]:
         user, _ = get_or_create_user(session)

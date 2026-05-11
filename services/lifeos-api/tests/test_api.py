@@ -254,6 +254,28 @@ def test_workout_plan_complete_is_idempotent(tmp_path, monkeypatch):
     assert sport_context.json()["latest_workout"]["id"] == first_complete.json()["completed_workout_id"]
 
 
+def test_workout_plan_can_be_read_after_callback_update(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        plan_id = client.post(
+            "/workouts/plan",
+            json={
+                "plan_date": "2026-05-11",
+                "goal": "fat_loss",
+                "available_minutes": 20,
+                "location_context": "grandparents_home",
+                "equipment": [],
+            },
+        ).json()["id"]
+        completed = client.post(f"/workouts/plans/{plan_id}/complete", json={})
+        fetched = client.get(f"/workouts/plans/{plan_id}")
+
+    assert completed.status_code == 200
+    assert fetched.status_code == 200
+    assert fetched.json()["id"] == plan_id
+    assert fetched.json()["status"] == "completed"
+    assert fetched.json()["completed_workout_id"] == completed.json()["completed_workout_id"]
+
+
 def test_health_daily_summary_upsert_and_context(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         first = client.post(

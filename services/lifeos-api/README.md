@@ -58,6 +58,7 @@ docker run --rm -p 8080:8080 -e PORT=8080 -e LIFEOS_API_KEY=replace-me -e DATABA
 - `POST /workouts/recommend`
 - `POST /workouts/log`
 - `POST /workouts/plan`
+- `GET /workouts/plans/{id}`
 - `PATCH /workouts/plans/{id}`
 - `POST /workouts/plans/{id}/complete`
 - `POST /health/daily-summaries`
