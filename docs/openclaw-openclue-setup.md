@@ -152,7 +152,7 @@ Sport recommendations must be stored before OpenClue presents them as today's pl
 
 For progress questions, OpenClue calls `GET /sport/progress`. For missed training days, OpenClue calls `POST /sport/missed-day`. `POST /workouts/plan` remains available for low-level/manual workout planning, but normal Telegram Sport workout generation should use the Sport Program Engine.
 
-Default context is `grandparents_home`. OpenClue should only switch to gym, pool, or Chisinau when the user says that context explicitly. At home, recommendations should use walking, mobility, gentle bodyweight, and recovery; avoid gym-equipment work such as Romanian deadlifts.
+If no schedule/date signal is available, default context is `grandparents_home`. When personalization marks the date as a city day, OpenClue can use the city morning gym/pool default unless Cristian says he is at grandparents/home. At home, recommendations should use walking, mobility, gentle bodyweight, and recovery; avoid gym-equipment work such as Romanian deadlifts.
 
 The Sport Program Engine now reads `personalization` settings from LifeOS. Those settings encode city days, city morning gym/pool defaults, grandparents midday training, the 50 m swim-repeat baseline with about 20 seconds rest, strict calorie/protein tracking, and coaching style. OpenClue must respect exercise restrictions from personalization: avoid lateral raises and high-rep shoulder isolation because those can trigger trap, neck, head, or dizziness symptoms. City days still need a defined work deliverable before the city work block starts.
 

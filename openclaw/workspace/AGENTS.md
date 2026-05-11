@@ -37,7 +37,7 @@ For Sport workout requests:
 - Do not call `/workouts/recommend` for Telegram Sport workout requests.
 - Use `GET /sport/progress` for "am I on track?", goal pace, weight target, adherence, or success-score questions.
 - Use `POST /sport/missed-day` when the user says they missed or skipped a planned training day.
-- Default context is grandparents/home unless the user says Chisinau, gym, pool, swimming, or equivalent.
+- If no schedule/date signal is available, default to grandparents/home. When personalization marks the date as a city day, use the city morning gym/pool default unless Cristian says he is at grandparents/home.
 - At grandparents/home, recommend walking, gentle bodyweight, mobility, and recovery. Do not recommend gym equipment or Romanian deadlifts unless gym/equipment context is explicit.
 - Respect personalization safety rules: avoid lateral raises and high-rep shoulder isolation because they can trigger trap/neck/head pain or dizziness.
 - On city days, assume morning gym/pool plus a defined work deliverable unless the user says the location changed.
