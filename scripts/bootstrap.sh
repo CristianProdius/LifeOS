@@ -157,6 +157,7 @@ validate_database_url
 scripts/render-openclaw-config.sh
 
 if [[ "$(uname -s)" == "Linux" && "$(id -u)" -eq 0 ]]; then
+  chown 1000:1000 openclaw openclaw/config openclaw/workspace
   chown -R 1000:1000 openclaw/config openclaw/workspace
 fi
 

@@ -1,198 +1,121 @@
 {
-  "runtime": {
-    "name": "openclaw",
-    "environmentEnv": "OPENCLAW_ENV",
-    "defaultEnvironment": "development",
-    "timezoneEnv": "OPENCLAW_TIMEZONE",
-    "defaultTimezone": "Europe/Chisinau",
-    "logLevelEnv": "OPENCLAW_LOG_LEVEL",
-    "defaultLogLevel": "info",
-    "statePathEnv": "OPENCLAW_STATE_PATH",
-    "defaultStatePath": "./var/openclaw-state.json"
-  },
-  "assistant": {
-    "name": "OpenClue",
-    "workspaceSkill": "lifeos",
-    "identity": "OpenClue is the LifeOS coach running on OpenClaw. It queries LifeOS before task, habit, workout, finance, and planning advice, updates LifeOS after confirmed actions, and routes Telegram forum replies by topic."
-  },
-  "workspace": {
-    "rootEnv": "OPENCLAW_WORKSPACE_DIR",
-    "defaultRoot": "./workspace",
-    "skills": [
-      "lifeos"
-    ]
-  },
-  "lifeosApi": {
-    "baseUrlEnv": "LIFEOS_API_BASE_URL",
-    "tokenEnv": "LIFEOS_API_TOKEN",
-    "timeoutMsEnv": "LIFEOS_API_TIMEOUT_MS",
-    "defaultTimeoutMs": 10000,
-    "endpoints": {
-      "health": "/health",
-      "context": "/context/{area}",
-      "tasks": "/tasks",
-      "habitLog": "/habits/log",
-      "workoutRecommend": "/workouts/recommend",
-      "workoutLog": "/workouts/log",
-      "finance": "/finance",
-      "financeSummary": "/finance/summary",
-      "financeAffordability": "/finance/affordability",
-      "dailyPlan": "/daily/plan",
-      "dailyReview": "/reviews/daily",
-      "weeklyReview": "/reviews/weekly",
-      "financeImport": "/finance/import",
-      "financeImportApprove": "/finance/import/{id}/approve",
-      "financeImportReject": "/finance/import/{id}/reject"
+  "gateway": {
+    "bind": "lan",
+    "port": 18789,
+    "auth": {
+      "mode": "token",
+      "token": {
+        "source": "env",
+        "provider": "default",
+        "id": "OPENCLAW_GATEWAY_TOKEN"
+      }
     }
   },
-  "telegram": {
-    "botTokenEnv": "TELEGRAM_BOT_TOKEN",
-    "modeEnv": "TELEGRAM_BOT_MODE",
-    "defaultMode": "long_polling",
-    "webhookUrlEnv": "TELEGRAM_WEBHOOK_URL",
-    "allowedUsers": [
-      {
-        "id": "${TELEGRAM_ALLOWED_USER_ID}",
-        "label": "owner"
-      }
-    ],
-    "allowedGroups": [
-      {
-        "chatId": "${TELEGRAM_ALLOWED_GROUP_ID}",
-        "title": "${TELEGRAM_ALLOWED_GROUP_TITLE}",
-        "forumTopicIds": {
-          "daily": "${TELEGRAM_TOPIC_DAILY_ID}",
-          "sport": "${TELEGRAM_TOPIC_SPORT_ID}",
-          "business": "${TELEGRAM_TOPIC_BUSINESS_ID}",
-          "finance": "${TELEGRAM_TOPIC_FINANCE_ID}",
-          "food": "${TELEGRAM_TOPIC_FOOD_ID}",
-          "review": "${TELEGRAM_TOPIC_REVIEW_ID}",
-          "admin": "${TELEGRAM_TOPIC_ADMIN_ID}"
+  "agents": {
+    "defaults": {
+      "workspace": "/home/node/.openclaw/workspace",
+      "skills": [
+        "lifeos"
+      ],
+      "model": {
+        "primary": "openai-codex/gpt-5.5"
+      },
+      "userTimezone": "Europe/Chisinau",
+      "systemPromptOverride": "You are OpenClue, a LifeOS coach running on OpenClaw. Query LifeOS before task, habit, workout, finance, and planning advice. Never invent progress, balances, streaks, or completed tasks. Give coaching answers by default; give coding answers only in Admin or when explicitly asked. In Telegram group or forum-topic turns, send visible replies with the message tool to the same chat and topic; do not rely only on a private final answer."
+    }
+  },
+  "messages": {
+    "visibleReplies": "automatic",
+    "groupChat": {
+      "visibleReplies": "automatic"
+    }
+  },
+  "channels": {
+    "telegram": {
+      "name": "OpenClue",
+      "enabled": true,
+      "botToken": {
+        "source": "env",
+        "provider": "default",
+        "id": "TELEGRAM_BOT_TOKEN"
+      },
+      "dmPolicy": "allowlist",
+      "allowFrom": [
+        "${TELEGRAM_ALLOWED_USER_ID}"
+      ],
+      "defaultTo": "${TELEGRAM_ALLOWED_GROUP_ID}",
+      "groupPolicy": "allowlist",
+      "capabilities": {
+        "inlineButtons": "all"
+      },
+      "groups": {
+        "${TELEGRAM_ALLOWED_GROUP_ID}": {
+          "enabled": true,
+          "requireMention": false,
+          "ingest": true,
+          "allowFrom": [
+            "${TELEGRAM_ALLOWED_USER_ID}"
+          ],
+          "skills": [
+            "lifeos"
+          ],
+          "systemPrompt": "You are OpenClue in the LifeOS Telegram supergroup. Route answers by forum topic. Query LifeOS before advice. Never claim a task, habit, workout, balance, or streak unless it exists in LifeOS. Send every visible Telegram forum reply with the message tool to the same chat and message_thread_id/topic.",
+          "topics": {
+            "${TELEGRAM_TOPIC_DAILY_ID}": {
+              "enabled": true,
+              "skills": [
+                "lifeos"
+              ],
+              "systemPrompt": "Daily topic: wake-up, daily plan, tasks, habits, check-ins, blockers, and evening shutdown."
+            },
+            "${TELEGRAM_TOPIC_SPORT_ID}": {
+              "enabled": true,
+              "skills": [
+                "lifeos"
+              ],
+              "systemPrompt": "Sport topic: walking, swimming, gym, strength training, soreness, readiness, and workout logs."
+            },
+            "${TELEGRAM_TOPIC_BUSINESS_ID}": {
+              "enabled": true,
+              "skills": [
+                "lifeos"
+              ],
+              "systemPrompt": "Business topic: deliverables, deep work, outreach, client work, and shipping progress."
+            },
+            "${TELEGRAM_TOPIC_FINANCE_ID}": {
+              "enabled": true,
+              "skills": [
+                "lifeos"
+              ],
+              "systemPrompt": "Finance topic: budgets, imports, transactions, spending, goals, and affordability. Never invent balances."
+            },
+            "${TELEGRAM_TOPIC_FOOD_ID}": {
+              "enabled": true,
+              "skills": [
+                "lifeos"
+              ],
+              "systemPrompt": "Food topic: meals, sweets, late eating, weight trend, and nutrition notes."
+            },
+            "${TELEGRAM_TOPIC_REVIEW_ID}": {
+              "enabled": true,
+              "skills": [
+                "lifeos"
+              ],
+              "systemPrompt": "Review topic: daily reviews, weekly reviews, goals, commitments, and adjustments."
+            },
+            "${TELEGRAM_TOPIC_ADMIN_ID}": {
+              "enabled": true,
+              "skills": [
+                "lifeos"
+              ],
+              "systemPrompt": "Admin topic: setup, diagnostics, deployment, errors, credentials, and coding only when explicitly requested."
+            }
+          }
         }
       }
-    ],
-    "routing": [
-      {
-        "intent": "daily",
-        "topic": "daily",
-        "messageThreadId": "${TELEGRAM_TOPIC_DAILY_ID}"
-      },
-      {
-        "intent": "sport",
-        "topic": "sport",
-        "messageThreadId": "${TELEGRAM_TOPIC_SPORT_ID}"
-      },
-      {
-        "intent": "business",
-        "topic": "business",
-        "messageThreadId": "${TELEGRAM_TOPIC_BUSINESS_ID}"
-      },
-      {
-        "intent": "food",
-        "topic": "food",
-        "messageThreadId": "${TELEGRAM_TOPIC_FOOD_ID}"
-      },
-      {
-        "intent": "finance",
-        "topic": "finance",
-        "messageThreadId": "${TELEGRAM_TOPIC_FINANCE_ID}"
-      },
-      {
-        "intent": "review",
-        "topic": "review",
-        "messageThreadId": "${TELEGRAM_TOPIC_REVIEW_ID}"
-      },
-      {
-        "intent": "admin",
-        "topic": "admin",
-        "messageThreadId": "${TELEGRAM_TOPIC_ADMIN_ID}"
-      }
-    ]
+    }
   },
   "cron": {
-    "timezoneEnv": "OPENCLAW_TIMEZONE",
-    "reminders": [
-      {
-        "id": "daily_wake_checkin",
-        "enabled": true,
-        "cron": "35 6 * * *",
-        "localTime": "06:35",
-        "topic": "daily",
-        "messageThreadId": "${TELEGRAM_TOPIC_DAILY_ID}",
-        "lifeosReadDomains": [
-          "plans",
-          "tasks",
-          "habits",
-          "workouts"
-        ],
-        "prompt": "Start the first morning flow with readiness, sleep, blockers, and the top constraint."
-      },
-      {
-        "id": "daily_plan_lock",
-        "enabled": true,
-        "cron": "0 7 * * *",
-        "localTime": "07:00",
-        "topic": "daily",
-        "messageThreadId": "${TELEGRAM_TOPIC_DAILY_ID}",
-        "lifeosReadDomains": [
-          "plans",
-          "tasks",
-          "habits"
-        ],
-        "prompt": "Propose or confirm the daily plan after querying LifeOS."
-      },
-      {
-        "id": "midday_review",
-        "enabled": true,
-        "cron": "30 12 * * *",
-        "localTime": "12:30",
-        "topic": "daily",
-        "messageThreadId": "${TELEGRAM_TOPIC_DAILY_ID}",
-        "lifeosReadDomains": [
-          "tasks",
-          "habits",
-          "plans"
-        ],
-        "prompt": "Check progress, unblock one item, and adjust the afternoon plan."
-      },
-      {
-        "id": "evening_shutdown",
-        "enabled": true,
-        "cron": "30 21 * * *",
-        "localTime": "21:30",
-        "topic": "daily",
-        "messageThreadId": "${TELEGRAM_TOPIC_DAILY_ID}",
-        "lifeosReadDomains": [
-          "tasks",
-          "habits",
-          "workouts",
-          "finance",
-          "plans"
-        ],
-        "prompt": "Close the day, capture completions, and prepare the next morning."
-      },
-      {
-        "id": "sunday_weekly_plan",
-        "enabled": true,
-        "cron": "0 20 * * SUN",
-        "localTime": "Sunday 20:00",
-        "topic": "review",
-        "messageThreadId": "${TELEGRAM_TOPIC_REVIEW_ID}",
-        "lifeosReadDomains": [
-          "plans",
-          "tasks",
-          "habits",
-          "workouts",
-          "finance"
-        ],
-        "prompt": "Run the weekly review and draft next week's plan after querying LifeOS."
-      }
-    ]
-  },
-  "safety": {
-    "requireAllowedTelegramUser": true,
-    "requireAllowedTelegramGroup": true,
-    "redactSecretsInLogs": true,
-    "postDiagnosticsTopic": "admin"
+    "enabled": true
   }
 }

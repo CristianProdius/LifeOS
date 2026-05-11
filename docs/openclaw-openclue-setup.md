@@ -109,6 +109,8 @@ Topic ownership:
 - Review: weekly planning, daily reviews, goals, projects, commitments, and strategy.
 - Admin: setup, config, API errors, deployment, logs, credentials, and coding.
 
+OpenClue is configured with `messages.groupChat.visibleReplies: "automatic"` so normal assistant final replies are posted visibly in Telegram forum topics. Without this, OpenClaw group rooms may process the message privately unless the model explicitly calls the message tool.
+
 ## Cron Reminders
 
 The template defines reminders in local `OPENCLAW_TIMEZONE` time:
@@ -122,6 +124,8 @@ The template defines reminders in local `OPENCLAW_TIMEZONE` time:
 | `sunday_weekly_plan` | `0 20 * * SUN` | Review | Sunday 20:00 weekly review and next-week plan |
 
 Every cron reminder must query LifeOS before composing the message. If LifeOS is unavailable, the reminder should say that current state could not be loaded and avoid state-specific claims.
+
+On the VPS, keep both `OPENCLAW_TZ` and `OPENCLAW_TIMEZONE` set to `Europe/Chisinau` in `.env`. The server host can stay on UTC; the gateway container and OpenClue cron jobs use Moldova time through these environment variables and the explicit `--tz Europe/Chisinau` cron setting.
 
 ## First Morning Flow
 
@@ -170,7 +174,15 @@ cd /opt/lifeos
 
 The bootstrap script validates secrets, renders `openclaw/config/openclaw.json`, fixes OpenClaw bind-mount ownership on Linux root deployments, starts the gateway, starts LifeOS API/Postgres, and starts the backup worker.
 
-OpenClaw also needs model/provider authentication. Use the Control UI at `http://127.0.0.1:18789/` over an SSH tunnel or run the official onboarding/channel commands against the Docker gateway.
+OpenClaw also needs model/provider authentication. OpenClue is configured to use the ChatGPT/Codex subscription route, not an OpenAI API key:
+
+```bash
+cd /opt/lifeos
+docker compose run --rm openclaw-cli models auth login --provider openai-codex --method device-code
+docker compose run --rm openclaw-cli models status --probe
+```
+
+The active model route is `openai-codex/gpt-5.5`, which is the Codex subscription model verified by a live agent turn for this stack. If OpenClue reports a missing API key for provider `openai`, check that `openclaw/config/openclaw.json` still has `agents.defaults.model.primary` set to `openai-codex/gpt-5.5`, then rerender and restart the gateway.
 
 Health checks:
 
@@ -188,6 +200,15 @@ cd /opt/lifeos
 TELEGRAM_BOT_TOKEN="$(grep '^TELEGRAM_BOT_TOKEN=' .env | cut -d= -f2-)"
 docker compose run --rm openclaw-cli channels add --channel telegram --token "$TELEGRAM_BOT_TOKEN"
 ```
+
+Cron setup after Telegram topics are configured:
+
+```bash
+cd /opt/lifeos
+./scripts/openclaw-cron-setup.sh
+```
+
+The cron setup script uses a temporary OpenClaw CLI state directory when calling gateway admin cron commands. This avoids stale paired-device scope limits while still authenticating with `OPENCLAW_GATEWAY_TOKEN`.
 
 If the Control UI is needed from your laptop, use an SSH tunnel instead of exposing the port publicly: `ssh -L 18789:127.0.0.1:18789 root@server`.
 

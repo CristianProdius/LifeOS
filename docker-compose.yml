@@ -55,7 +55,7 @@ services:
         condition: service_started
     entrypoint:
       - node
-      - dist/index.js
+      - openclaw.mjs
     security_opt:
       - no-new-privileges:true
 

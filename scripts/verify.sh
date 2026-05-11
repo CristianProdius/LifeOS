@@ -24,6 +24,7 @@ required_files=(
   scripts/seed.sh
   scripts/backup.sh
   scripts/render-openclaw-config.sh
+  scripts/openclaw-cron-setup.sh
   scripts/verify.sh
 )
 
@@ -31,11 +32,11 @@ for path in "${required_files[@]}"; do
   [[ -f "$path" ]] || die "missing $path"
 done
 
-for path in scripts/bootstrap.sh scripts/migrate.sh scripts/seed.sh scripts/backup.sh scripts/render-openclaw-config.sh scripts/verify.sh; do
+for path in scripts/bootstrap.sh scripts/migrate.sh scripts/seed.sh scripts/backup.sh scripts/render-openclaw-config.sh scripts/openclaw-cron-setup.sh scripts/verify.sh; do
   [[ -x "$path" ]] || die "$path is not executable"
 done
 
-bash -n scripts/bootstrap.sh scripts/migrate.sh scripts/seed.sh scripts/backup.sh scripts/render-openclaw-config.sh scripts/verify.sh
+bash -n scripts/bootstrap.sh scripts/migrate.sh scripts/seed.sh scripts/backup.sh scripts/render-openclaw-config.sh scripts/openclaw-cron-setup.sh scripts/verify.sh
 
 if LC_ALL=C grep -R -n '[^[:print:][:space:]]' .gitignore .env.example docker-compose.yml scripts; then
   die "non-ASCII or control characters detected"

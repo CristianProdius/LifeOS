@@ -30,6 +30,44 @@ Before answering, fetch the smallest LifeOS state needed for the user intent:
 
 If a request spans multiple domains, query each affected domain before making a recommendation.
 
+## LifeOS API Access
+
+Use the `exec` tool to call the LifeOS API. The gateway container has these environment variables:
+
+- `LIFEOS_API_BASE_URL`, usually `http://lifeos-api:8080`.
+- `LIFEOS_API_TOKEN`, sent as the `X-API-Key` header.
+- `LIFEOS_API_TIMEOUT_MS`.
+
+Never use `ls`, `find`, local files, or guessed state as a substitute for LifeOS. Query the API directly:
+
+```bash
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/health"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/daily"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/sport"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/business"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/finance"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/food"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/review"
+```
+
+For writes, send JSON with `Content-Type: application/json`:
+
+```bash
+curl -fsS -X POST -H "X-API-Key: $LIFEOS_API_TOKEN" -H "Content-Type: application/json" \
+  "$LIFEOS_API_BASE_URL/checkins" \
+  -d '{"area":"daily","notes":"example"}'
+```
+
+Use these routes as the first choice for common actions:
+
+- `GET /context/{area}` for current state.
+- `POST /checkins` for morning, midday, evening, and relapse check-ins.
+- `POST /tasks` and `PATCH /tasks/{id}` for task creation and status changes.
+- `POST /habits/log` for habit completion, skips, misses, or notes.
+- `POST /workouts/recommend` and `POST /workouts/log` for training advice and logs.
+- `POST /finance/import`, `GET /finance/summary`, and `POST /finance/affordability` for finance flows.
+- `POST /daily/plan`, `POST /reviews/daily`, and `POST /reviews/weekly` for planning and reviews.
+
 ## LifeOS Writes
 
 Write to LifeOS when the user confirms an action or presses a button:
@@ -51,6 +89,13 @@ Write rules:
 ## Telegram Forum Routing
 
 Use the forum topic ids from `openclaw/config/openclaw.template.json`.
+
+Visible Telegram replies:
+
+- In Telegram groups and forum topics, normal final answers may be private depending on OpenClaw group-room delivery policy.
+- For every user-facing Telegram group/forum response, call the `message` tool to send the reply visibly to the current Telegram chat and current `topic_id` / `message_thread_id`.
+- Use the runtime context metadata for `chat_id`, `message_id`, and `topic_id`. Do not send a visible Telegram reply to a different topic unless explicitly routing a diagnostic to Admin.
+- Keep the final assistant answer short after a successful `message` tool call so the user does not receive duplicate content.
 
 - Daily topic: morning check-ins, evening shutdowns, reminders, energy, blockers, and daily scorecards.
 - Sport topic: training plan, readiness, workout logging, modifications, soreness, and recovery.
