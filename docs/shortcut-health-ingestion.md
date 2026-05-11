@@ -18,21 +18,31 @@ Send one daily summary per source. Apple Health can aggregate Apple Watch activi
 {
   "summary_date": "2026-05-11",
   "source": "apple_health",
-  "sleep_duration_minutes": 420,
-  "sleep_quality": 80,
   "weight_kg": 117.0,
   "body_fat_percent": 34.5,
   "bmi": 38.2,
   "steps": 6000,
   "active_energy_kcal": 530,
-  "workouts_count": 1,
   "resting_heart_rate": 63,
   "average_heart_rate": 92,
-  "notes": "Imported by iOS Shortcut"
+  "notes": "iOS automatic health sync"
 }
 ```
 
 `summary_date` and `source` are required. The endpoint upserts by date and source, so sending the same day twice updates the same row instead of creating duplicates.
+
+Recommended evening automation fields:
+
+- `steps`
+- `active_energy_kcal`
+- `weight_kg`
+- `body_fat_percent`
+- `bmi`
+- `resting_heart_rate`
+- `average_heart_rate`
+- `notes`
+
+Xiaomi scale values should reach LifeOS through Xiaomi scale app sync into Apple Health, then through this Shortcut. Keep the Shortcut focused on stable daily summary values; do not send raw Health samples, sleep stage dictionaries, or unavailable fields.
 
 ## Shortcut Automation
 
@@ -46,8 +56,6 @@ Create an iOS Shortcut that:
 
 Recommended automations:
 
-- `06:45` for sleep/weight data after wake-up.
-- `21:45` for steps, active energy, and workout count.
-- Optional Apple Watch workout-finished automation if available on the phone.
+- `21:45` for steps, active energy, heart rate, and latest Xiaomi scale body metrics.
 
-Use Apple Health as the first aggregator. Sleep Cycle and Xiaomi scale should sync to Apple Health when possible; direct CSV imports can be added later for records that do not sync.
+Use Apple Health as the first aggregator. Direct CSV imports can be added later for records that do not sync.

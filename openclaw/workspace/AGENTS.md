@@ -19,9 +19,12 @@ curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/financ
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/profile"
 ```
 
+For Sport, Food, and Daily contexts, use `health_progress` before interpreting health data. It summarizes the latest Apple Health/Xiaomi scale sync, short-term averages, and deltas. Do not overreact to one bad day. If `health_progress.data_quality.has_trend` is false, say the trend is not available yet instead of inventing one.
+
 For Sport workout requests:
 
 - Query `/context/sport` first.
+- Use `health_progress` plus recent workouts to choose easy versus moderate training. Low steps, high average heart rate, or limited trend data should bias toward walking, mobility, or controlled beginner work.
 - Create the recommendation with `POST /workouts/plan`.
 - Only then send the workout in Telegram.
 - Use today's date in Europe/Chisinau for `plan_date`.

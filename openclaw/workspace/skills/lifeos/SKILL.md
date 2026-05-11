@@ -73,14 +73,24 @@ Use these routes as the first choice for common actions:
 - `POST /finance/import`, `GET /finance/summary`, and `POST /finance/affordability` for finance flows.
 - `POST /daily/plan`, `POST /reviews/daily`, and `POST /reviews/weekly` for planning and reviews.
 
+## Health Progress
+
+For Sport, Food, and Daily contexts, `GET /context/{area}` includes `health_progress` when health summaries exist. Use it before interpreting Apple Health or Xiaomi scale data.
+
+- Sport: use movement, active energy, resting heart rate, average heart rate, and recent workouts to choose easy versus moderate training. Do not overreact to one bad day.
+- Food: use weight, body fat, and BMI trends only when `health_progress.data_quality.has_trend` is true. If it is false, say the trend is not available yet.
+- Daily: mention whether health sync happened and give one movement/body-metric-aware next action.
+- Never use sleep or workout count unless those fields are present in LifeOS.
+
 ## Sport Workout Flow
 
 When the user asks what workout to do today:
 
 1. Query `GET /context/sport`.
-2. Decide context. Default to `grandparents_home` unless the message mentions Chisinau, gym, pool, swimming, or equivalent.
-3. Create the plan with `POST /workouts/plan`.
-4. Send the returned workout visibly to Telegram with buttons.
+2. Read `health_progress` and recent workouts. Do not overreact to one bad day.
+3. Decide context. Default to `grandparents_home` unless the message mentions Chisinau, gym, pool, swimming, or equivalent.
+4. Create the plan with `POST /workouts/plan`.
+5. Send the returned workout visibly to Telegram with buttons.
 
 Home/grandparents default:
 

@@ -74,6 +74,15 @@ DEFAULT_PROFILE = {
 }
 
 PLANNED_WORKOUT_STATUSES = {"proposed", "accepted", "started", "completed", "skipped", "replaced"}
+HEALTH_PROGRESS_METRICS = (
+    "steps",
+    "active_energy_kcal",
+    "weight_kg",
+    "body_fat_percent",
+    "bmi",
+    "resting_heart_rate",
+    "average_heart_rate",
+)
 
 
 def create_app(database_url: str | None = None, seed_database: bool = True) -> FastAPI:
@@ -167,16 +176,15 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
             "recent_checkins": [checkin_to_dict(checkin) for checkin in checkins],
         }
         if normalized_area_slug in {"sport", "daily", "food"}:
+            health_summaries = session.scalars(
+                select(HealthDailySummary)
+                .where(HealthDailySummary.user_id == user.id)
+                .order_by(HealthDailySummary.summary_date.desc(), HealthDailySummary.updated_at.desc())
+                .limit(7)
+            ).all()
             context["profile"] = profile_to_dict(get_or_create_life_profile(session, user.id))
-            context["recent_health_summaries"] = [
-                health_daily_summary_to_dict(summary)
-                for summary in session.scalars(
-                    select(HealthDailySummary)
-                    .where(HealthDailySummary.user_id == user.id)
-                    .order_by(HealthDailySummary.summary_date.desc(), HealthDailySummary.created_at.desc())
-                    .limit(7)
-                ).all()
-            ]
+            context["recent_health_summaries"] = [health_daily_summary_to_dict(summary) for summary in health_summaries]
+            context["health_progress"] = build_health_progress(health_summaries)
         if normalized_area_slug == "sport":
             active_plan = session.scalar(
                 select(PlannedWorkout)
@@ -879,6 +887,74 @@ def health_daily_summary_to_dict(summary: HealthDailySummary) -> dict[str, Any]:
         "created_at": summary.created_at,
         "updated_at": summary.updated_at,
     }
+
+
+def build_health_progress(summaries: list[HealthDailySummary]) -> dict[str, Any]:
+    ordered = sorted(summaries, key=lambda item: (item.summary_date, item.updated_at), reverse=True)
+    latest = ordered[0] if ordered else None
+    previous = next(
+        (summary for summary in ordered[1:] if latest is not None and summary.summary_date < latest.summary_date),
+        None,
+    )
+    latest_metrics = health_metric_values(latest) if latest else {}
+    previous_metrics = health_metric_values(previous) if previous else {}
+
+    averages: dict[str, float | int] = {}
+    deltas: dict[str, float | int | None] = {}
+    for metric in HEALTH_PROGRESS_METRICS:
+        values = [getattr(summary, metric) for summary in ordered if getattr(summary, metric) is not None]
+        if values:
+            averages[metric] = rounded_metric(sum(float(value) for value in values) / len(values))
+        latest_value = latest_metrics.get(metric)
+        previous_value = previous_metrics.get(metric)
+        deltas[metric] = (
+            rounded_metric(float(latest_value) - float(previous_value))
+            if latest_value is not None and previous_value is not None
+            else None
+        )
+
+    days_available = len({summary.summary_date for summary in ordered})
+    has_latest = latest is not None
+    has_trend = days_available >= 2
+    missing_latest_metrics = [
+        metric for metric in HEALTH_PROGRESS_METRICS if latest_metrics.get(metric) is None
+    ] if latest else list(HEALTH_PROGRESS_METRICS)
+
+    return {
+        "latest": health_progress_summary_to_dict(latest) if latest else None,
+        "previous": health_progress_summary_to_dict(previous) if previous else None,
+        "seven_day_average": averages,
+        "deltas": deltas,
+        "data_quality": {
+            "summary_count": len(ordered),
+            "days_available": days_available,
+            "has_latest": has_latest,
+            "has_trend": has_trend,
+            "trend_status": "available" if has_trend else "needs_more_data" if has_latest else "no_data",
+            "missing_latest_metrics": missing_latest_metrics,
+        },
+    }
+
+
+def health_progress_summary_to_dict(summary: HealthDailySummary) -> dict[str, Any]:
+    return {
+        "id": summary.id,
+        "summary_date": summary.summary_date,
+        "source": summary.source,
+        "metrics": health_metric_values(summary),
+        "updated_at": summary.updated_at,
+    }
+
+
+def health_metric_values(summary: HealthDailySummary | None) -> dict[str, Any]:
+    if summary is None:
+        return {metric: None for metric in HEALTH_PROGRESS_METRICS}
+    return {metric: getattr(summary, metric) for metric in HEALTH_PROGRESS_METRICS}
+
+
+def rounded_metric(value: float) -> float | int:
+    rounded = round(value, 2)
+    return int(rounded) if rounded.is_integer() else rounded
 
 
 def build_workout_recommendation(payload: WorkoutRecommendationRequest) -> dict[str, Any]:
