@@ -597,6 +597,62 @@ def test_sport_today_gym_context_differs_from_home(tmp_path, monkeypatch):
     assert any("press" in name or "pulldown" in name or "bike" in name for name in names)
 
 
+def test_sport_today_uses_swim_baseline_for_pool_context(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.post("/sport/today", json={"request_date": "2026-05-13", "location_context": "chisinau_pool"})
+
+    assert response.status_code == 201
+    planned = response.json()["planned_workout"]
+    exercise_text = " ".join(f"{exercise['name']} {exercise.get('notes', '')}" for exercise in planned["exercises"]).lower()
+    assert planned["duration_minutes"] == 60
+    assert planned["adaptation_reason"].endswith("swim_low_impact")
+    assert "50 m" in exercise_text
+    assert "20 seconds" in exercise_text
+
+
+def test_sport_today_uses_gym_full_body_without_lateral_raises(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.post("/sport/today", json={"request_date": "2026-05-15", "location_context": "chisinau_gym"})
+
+    assert response.status_code == 201
+    planned = response.json()["planned_workout"]
+    names = {exercise["name"].lower() for exercise in planned["exercises"]}
+    assert planned["duration_minutes"] == 60
+    assert planned["adaptation_reason"].endswith("gym_full_body")
+    assert "lateral raise" not in " ".join(names)
+    assert any("goblet" in name or "leg press" in name for name in names)
+    assert any("row" in name or "pulldown" in name for name in names)
+
+
+def test_sport_today_uses_grandparents_midday_home_plan(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.post("/sport/today", json={"request_date": "2026-05-14", "location_context": "grandparents_home"})
+
+    assert response.status_code == 201
+    planned = response.json()["planned_workout"]
+    names = {exercise["name"].lower() for exercise in planned["exercises"]}
+    assert planned["duration_minutes"] == 40
+    assert planned["adaptation_reason"].endswith("home_midday_bodyweight")
+    assert any("pull" in name or "dead hang" in name for name in names)
+    assert "leg press" not in names
+
+
+def test_sport_today_reduces_intensity_after_poor_sleep_note(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.post(
+            "/sport/today",
+            json={"request_date": "2026-05-18", "location_context": "chisinau_gym", "notes": "Slept 4 hours and feel tired."},
+        )
+
+    assert response.status_code == 201
+    planned = response.json()["planned_workout"]
+    assert planned["intensity"] == "easy"
+    assert planned["duration_minutes"] <= 40
+    assert "poor_sleep" in planned["adaptation_reason"]
+    names = {exercise["name"].lower() for exercise in planned["exercises"]}
+    assert any("walk" in name or "mobility" in name for name in names)
+
+
 def test_sport_missed_day_creates_safe_adjustment(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         plan = client.post("/sport/today", json={"request_date": "2026-05-11", "location_context": "grandparents_home"})

@@ -973,6 +973,8 @@ def create_or_reuse_sport_today_workout(
     request_date = payload.request_date or lifeos_today()
     goal, program = get_active_sport_goal_and_program(session, user_id)
     current_week = get_current_program_week(session, program, request_date)
+    settings = profile_settings(session, user_id)
+    sport_settings = settings.get("sport", {})
     existing = session.scalar(
         select(PlannedWorkout)
         .where(
@@ -987,13 +989,17 @@ def create_or_reuse_sport_today_workout(
     if existing is not None:
         return sport_today_response(existing, goal, program, current_week, reused=True)
 
-    location_context = payload.location_context or program.default_location_context
-    available_minutes = payload.available_minutes or default_minutes_for_week(current_week)
+    location_context = payload.location_context or infer_location_context(request_date, program, sport_settings)
+    available_minutes = payload.available_minutes or personalized_default_minutes(location_context, sport_settings, current_week)
     intensity = intensity_for_week(current_week)
     program_day = max(1, min((request_date - current_week.week_start).days + 1, 7))
-    focus = program_focus_for_day(current_week, program_day)
+    focus = personalized_focus(request_date, location_context, current_week, program_day, sport_settings)
     weekly = weekly_adherence(session, user_id, current_week)
-    if weekly["skipped_sessions"] > 0 or has_recent_missed_adjustment(session, program, request_date):
+    if has_poor_sleep_signal(payload.notes):
+        focus = "poor_sleep_recovery"
+        intensity = "easy"
+        available_minutes = min(available_minutes, 40)
+    elif weekly["skipped_sessions"] > 0 or has_recent_missed_adjustment(session, program, request_date):
         focus = "recovery"
         intensity = "easy"
         available_minutes = min(available_minutes, 30)
@@ -1004,6 +1010,7 @@ def create_or_reuse_sport_today_workout(
         intensity=intensity,
         location_context=location_context,
         focus=focus,
+        sport_settings=sport_settings,
     )
     exercises = add_program_notes_to_exercises(workout["exercises"], current_week, program_day)
     plan = PlannedWorkout(
@@ -1200,6 +1207,55 @@ def sport_next_actions(confidence: str, healthy_pace_status: str, weekly: dict[s
     if confidence == "low":
         actions.append("Keep syncing weight and activity daily so the trend becomes reliable.")
     return actions or ["Keep the scheduled workout and maintain the current pace."]
+
+
+def infer_location_context(request_date: date, program: TrainingProgram, sport_settings: dict[str, Any]) -> str:
+    weekday = request_date.strftime("%A").lower()
+    if weekday in sport_settings.get("city_training_days", []):
+        return "chisinau_pool" if weekday in {"wednesday", "saturday"} else "chisinau_gym"
+    return program.default_location_context
+
+
+def personalized_default_minutes(
+    location_context: str,
+    sport_settings: dict[str, Any],
+    week: TrainingProgramWeek,
+) -> int:
+    session_minutes = sport_settings.get("session_minutes", {})
+    normalized_location = slugify(location_context).replace("-", "_")
+    if normalized_location in {"chisinau_pool", "pool", "swimming", "chisinau_gym", "gym", "chisinau_city"}:
+        return int(session_minutes.get("city", default_minutes_for_week(week)))
+    if normalized_location in {"grandparents_home", "home"}:
+        return int(session_minutes.get("home", default_minutes_for_week(week)))
+    return default_minutes_for_week(week)
+
+
+def personalized_focus(
+    request_date: date,
+    location_context: str,
+    week: TrainingProgramWeek,
+    program_day: int,
+    sport_settings: dict[str, Any],
+) -> str:
+    normalized_location = slugify(location_context).replace("-", "_")
+    weekday = request_date.strftime("%A").lower()
+    if normalized_location in {"chisinau_pool", "pool", "swimming"}:
+        return "swim_low_impact"
+    if normalized_location in {"chisinau_gym", "gym"}:
+        return "gym_full_body"
+    if normalized_location in {"grandparents_home", "home"}:
+        if weekday == "thursday":
+            return "home_midday_bodyweight"
+        if sport_settings.get("home_training_time") == "midday":
+            return "home_midday_bodyweight"
+    return program_focus_for_day(week, program_day)
+
+
+def has_poor_sleep_signal(notes: str | None) -> bool:
+    if not notes:
+        return False
+    normalized = notes.lower()
+    return any(signal in normalized for signal in ["poor sleep", "slept 4", "slept 5", "tired", "exhausted", "bad sleep"])
 
 
 def program_focus_for_day(week: TrainingProgramWeek, program_day: int) -> str:
@@ -1582,15 +1638,53 @@ def build_planned_workout(
     intensity: str,
     location_context: str,
     focus: str | None = None,
+    sport_settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized_location = slugify(location_context).replace("-", "_")
     equipment_set = {slugify(item).replace("-", "_") for item in equipment}
     normalized_focus = slugify(focus or "").replace("-", "_")
-    if normalized_focus == "recovery":
+    sport_settings = sport_settings or {}
+    swimming_baseline = sport_settings.get("swimming_baseline", {})
+    if normalized_focus == "poor_sleep_recovery":
+        exercises = [
+            {"name": "Easy recovery walk", "duration_seconds": min(available_minutes, 20) * 60, "notes": "Poor sleep detected; keep this easy."},
+            {"name": "Mobility flow", "duration_seconds": 480, "notes": "Hips, ankles, upper back, shoulders; no lateral raises."},
+            {"name": "Breathing downshift", "duration_seconds": 240},
+        ]
+    elif normalized_focus == "recovery":
         exercises = [
             {"name": "Easy walk", "duration_seconds": min(available_minutes, 20) * 60, "notes": "Keep this intentionally easy."},
             {"name": "Mobility flow", "duration_seconds": 420, "notes": "Hips, ankles, upper back, shoulders."},
             {"name": "Breathing downshift", "duration_seconds": 240},
+        ]
+    elif normalized_focus == "swim_low_impact":
+        repeat_distance = int(swimming_baseline.get("repeat_distance_m", 50))
+        rest_seconds = int(swimming_baseline.get("rest_seconds", 20))
+        exercises = [
+            {"name": "Easy swim warm-up", "duration_seconds": 600, "notes": "Relaxed pace."},
+            {
+                "name": "Swim repeats",
+                "duration_seconds": max((available_minutes - 20) * 60, 1200),
+                "notes": f"Repeat {repeat_distance} m, rest about {rest_seconds} seconds, then repeat. Stay smooth, not all-out.",
+            },
+            {"name": "Technique cooldown", "duration_seconds": 600, "notes": "Easy laps or backstroke; leave the pool feeling better."},
+        ]
+    elif normalized_focus == "gym_full_body":
+        exercises = [
+            {"name": "Treadmill walk", "duration_seconds": 480, "notes": "Warm up at easy pace."},
+            {"name": "Goblet squat to box", "sets": 2, "reps": 10, "notes": "RPE 6-7, controlled depth."},
+            {"name": "Chest press", "sets": 2, "reps": 10, "notes": "Controlled reps; no shoulder pain."},
+            {"name": "Seated cable row", "sets": 2, "reps": 10, "notes": "Keep traps relaxed."},
+            {"name": "Lat pulldown", "sets": 2, "reps": 10, "notes": "No neck strain."},
+            {"name": "Stationary bike", "duration_seconds": max((available_minutes - 35) * 60, 600), "notes": "Zone 2 finish."},
+        ]
+    elif normalized_focus == "home_midday_bodyweight":
+        exercises = [
+            {"name": "Easy walk warm-up", "duration_seconds": 600},
+            {"name": "Dead hang practice", "sets": 3, "duration_seconds": 10, "notes": "Stop before hand pain changes form."},
+            {"name": "Incline push-ups", "sets": 2, "reps": 10, "notes": "Leave reps in reserve."},
+            {"name": "Chair squats", "sets": 2, "reps": 12, "notes": "Smooth reps, no rushing."},
+            {"name": "Mobility cooldown", "duration_seconds": 420, "notes": "Modified low-impact only; no jumping HIIT."},
         ]
     elif normalized_focus == "long_walk":
         exercises = [
