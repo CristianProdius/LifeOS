@@ -14,6 +14,7 @@ from lifeos_api.models import (
     HabitDefinition,
     HealthDailySummary,
     LifeProfile,
+    ProfileSetting,
     SportGoal,
     TaskTemplate,
     Task,
@@ -73,6 +74,81 @@ RESET_PLAN = [
     (13, "Create week 2 task list", "review", "Turn the next seven days into concrete daily tasks.", 4, 30),
     (14, "Prepare OpenClue adjustment notes", "admin", "Record what the bot got wrong and what needs to be added next.", 4, 30),
 ]
+
+
+PERSONALIZATION_SEED = {
+    "sport": {
+        "city_training_days": ["wednesday", "friday", "saturday"],
+        "optional_city_days": ["monday", "sunday"],
+        "city_training_time": "morning",
+        "home_training_time": "midday",
+        "productivity_base": "grandparents_home",
+        "city_role": "gym_pool_relationship_anchor",
+        "gym_available": True,
+        "olympic_pool_available": True,
+        "training_days_per_week": 6,
+        "hard_days_per_week": 3,
+        "session_minutes": {"home": 40, "city": 60, "weekend_long": 75},
+        "modality_priority": "calorie_burn_lowest_injury_risk",
+        "tie_breakers": {"low_motivation_or_recovery": "swim", "high_focus": "gym"},
+        "walking_baseline": {"comfortable_minutes_min": 30, "comfortable_minutes_max": 45, "jogging": "hard_due_to_weight"},
+        "swimming_baseline": {
+            "session_minutes": 60,
+            "repeat_distance_m": 50,
+            "rest_seconds": 20,
+            "continuous_distance_m": 100,
+            "hard_continuous_distance_m": 200,
+        },
+        "calisthenics_baseline": {
+            "pullups_min": 1,
+            "pullups_max": 2,
+            "dead_hang_seconds_min": 10,
+            "dead_hang_seconds_max": 15,
+            "pushups_min": 20,
+            "pushups_max": 30,
+            "bodyweight_squats_min": 50,
+        },
+        "equipment": {
+            "pull_up_bar": "improvised_available",
+            "improvised_dumbbells": "available_water_bottles",
+            "walking_pad": "planned",
+        },
+        "exercise_restrictions": {
+            "avoid": ["lateral_raises", "high_rep_shoulder_isolation"],
+            "symptoms": ["neck_pain", "head_pain", "dizziness"],
+            "stop_rule": "stop_triggering_exercise_immediately",
+        },
+    },
+    "food": {
+        "tracking_mode": "strict_calories_protein",
+        "deficit_strategy": "aggressive_adjustable",
+        "photo_logging": True,
+        "estimate_policy": "label_estimates_when_exact_data_unavailable",
+        "meal_structure": "3_meals_optional_planned_snack",
+        "home_food_pattern": "mostly_home_cooked",
+        "meal_prep": "explicit_if_assigned",
+        "controlled_foods": ["sweets", "bread", "pasta", "rice", "oil", "nuts", "fried_food"],
+        "kitchen_scale": "needed",
+        "adjustment_signal": "weekly_average_weight",
+    },
+    "daily": {
+        "sleep": {"bed_target": "23:30", "wake_target": "07:00", "out_of_bed_rule": "immediate_no_snooze"},
+        "productivity": {
+            "metric": "one_meaningful_business_deliverable",
+            "grandparents_days": "high_output",
+            "city_days": "same_deliverable_tighter_plan",
+            "city_work_environment": "laptop_cafe_or_library_lower_productivity",
+        },
+        "training_times": {"city": "morning", "grandparents_home": "midday"},
+    },
+    "coaching": {
+        "style": "strict_data_based",
+        "failure_triggers": ["sleep_snooze_loop", "instagram_scrolling", "sweets_compulsive_eating"],
+        "miss_policy": "show_consequence_then_next_action",
+        "no_punishment_workouts": True,
+        "no_shame": True,
+    },
+}
 
 
 FINANCE_CATEGORIES = [
@@ -198,6 +274,33 @@ def seed_reset_plan(session: Session) -> dict[str, int]:
         )
         created += 1
 
+    for domain, settings in PERSONALIZATION_SEED.items():
+        profile_setting = session.scalar(
+            select(ProfileSetting).where(ProfileSetting.user_id == user.id, ProfileSetting.domain == domain)
+        )
+        if profile_setting is None:
+            session.add(ProfileSetting(user_id=user.id, domain=domain, settings=settings))
+            created += 1
+        else:
+            merged = merge_missing_settings(profile_setting.settings, settings)
+            if merged != profile_setting.settings:
+                profile_setting.settings = merged
+
+    kitchen_scale = session.scalar(select(Task).where(Task.user_id == user.id, Task.title == "Buy kitchen scale"))
+    if kitchen_scale is None:
+        session.add(
+            Task(
+                user_id=user.id,
+                area_id=areas["food"].id,
+                title="Buy kitchen scale",
+                notes="Needed for strict calorie tracking; weigh calorie-dense foods once available.",
+                status="todo",
+                priority=4,
+                due_date=date.today() + timedelta(days=7),
+            )
+        )
+        created += 1
+
     month = date(2026, 5, 1)
     dates_budget = session.scalar(
         select(FinanceBudget).where(
@@ -232,6 +335,17 @@ def seed_reset_plan(session: Session) -> dict[str, int]:
     session.commit()
     created += seed_sport_program(session, user.id)["created"]
     return {"created": created}
+
+
+def merge_missing_settings(existing: dict, defaults: dict) -> dict:
+    merged = dict(existing or {})
+    for key, default_value in defaults.items():
+        existing_value = merged.get(key)
+        if key not in merged:
+            merged[key] = default_value
+        elif isinstance(existing_value, dict) and isinstance(default_value, dict):
+            merged[key] = merge_missing_settings(existing_value, default_value)
+    return merged
 
 
 def seed_sport_program(session: Session, user_id: int) -> dict[str, int]:

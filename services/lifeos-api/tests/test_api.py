@@ -213,6 +213,25 @@ def test_profile_defaults_and_updates(tmp_path, monkeypatch):
     assert update_response.json()["equipment"]["walking_pad"] == "available"
 
 
+def test_profile_includes_seeded_personalization_settings(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.get("/profile")
+        food_context = client.get("/context/food")
+
+    assert response.status_code == 200
+    personalization = response.json()["personalization"]
+    assert personalization["sport"]["city_training_time"] == "morning"
+    assert personalization["sport"]["home_training_time"] == "midday"
+    assert personalization["sport"]["swimming_baseline"]["repeat_distance_m"] == 50
+    assert "lateral_raises" in personalization["sport"]["exercise_restrictions"]["avoid"]
+    assert personalization["food"]["tracking_mode"] == "strict_calories_protein"
+    assert personalization["food"]["deficit_strategy"] == "aggressive_adjustable"
+    assert personalization["daily"]["sleep"]["wake_target"] == "07:00"
+    assert personalization["coaching"]["style"] == "strict_data_based"
+    food_tasks = {task["title"] for task in food_context.json()["tasks"]}
+    assert "Buy kitchen scale" in food_tasks
+
+
 def test_workout_plan_is_stored_and_contextualized_for_home(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         plan_response = client.post(

@@ -62,6 +62,16 @@ class LifeProfile(TimestampMixin, Base):
     equipment: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, nullable=False)
 
 
+class ProfileSetting(TimestampMixin, Base):
+    __tablename__ = "profile_settings"
+    __table_args__ = (UniqueConstraint("user_id", "domain", name="uq_profile_settings_user_domain"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    domain: Mapped[str] = mapped_column(String(80), nullable=False)
+    settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+
 class Area(TimestampMixin, Base):
     __tablename__ = "areas"
     __table_args__ = (UniqueConstraint("user_id", "slug", name="uq_areas_user_slug"),)

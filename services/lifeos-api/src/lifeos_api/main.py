@@ -35,6 +35,7 @@ from lifeos_api.models import (
     HealthDailySummary,
     LifeProfile,
     PlannedWorkout,
+    ProfileSetting,
     ProgramAdjustment,
     SportGoal,
     Task,
@@ -139,7 +140,7 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         profile = get_or_create_life_profile(session, user.id)
         session.commit()
         session.refresh(profile)
-        return profile_to_dict(profile)
+        return profile_to_dict(profile, personalization=profile_settings(session, user.id))
 
     @app.patch("/profile")
     def update_profile(payload: LifeProfileUpdate, session: Session = Depends(get_session)) -> dict[str, Any]:
@@ -806,6 +807,11 @@ def get_or_create_life_profile(session: Session, user_id: int) -> LifeProfile:
     return profile
 
 
+def profile_settings(session: Session, user_id: int) -> dict[str, dict[str, Any]]:
+    settings = session.scalars(select(ProfileSetting).where(ProfileSetting.user_id == user_id).order_by(ProfileSetting.domain)).all()
+    return {setting.domain: setting.settings for setting in settings}
+
+
 def lifeos_today(timezone_name: str | None = None) -> date:
     try:
         timezone = ZoneInfo(timezone_name or LIFEOS_DEFAULT_TIMEZONE)
@@ -1226,8 +1232,8 @@ def sport_today_response(
     }
 
 
-def profile_to_dict(profile: LifeProfile) -> dict[str, Any]:
-    return {
+def profile_to_dict(profile: LifeProfile, personalization: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    payload = {
         "id": profile.id,
         "timezone": profile.timezone,
         "default_context": profile.default_context,
@@ -1235,6 +1241,9 @@ def profile_to_dict(profile: LifeProfile) -> dict[str, Any]:
         "goals": profile.goals,
         "equipment": profile.equipment,
     }
+    if personalization is not None:
+        payload["personalization"] = personalization
+    return payload
 
 
 def area_to_dict(area: Area) -> dict[str, Any]:
