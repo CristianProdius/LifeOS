@@ -175,7 +175,7 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
             "habits": [habit_to_dict(habit) for habit in habits],
             "recent_checkins": [checkin_to_dict(checkin) for checkin in checkins],
         }
-        if normalized_area_slug in {"sport", "daily", "food"}:
+        if normalized_area_slug in {"sport", "daily", "food", "health"}:
             health_summaries = session.scalars(
                 select(HealthDailySummary)
                 .where(HealthDailySummary.user_id == user.id)

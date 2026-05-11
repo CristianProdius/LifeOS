@@ -381,6 +381,35 @@ def test_health_progress_is_returned_for_sport_food_and_daily_contexts(tmp_path,
         assert progress["data_quality"]["trend_status"] == "available"
 
 
+def test_health_context_returns_direct_health_progress(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.post(
+            "/health/daily-summaries",
+            json={
+                "summary_date": "2026-05-11",
+                "source": "apple_health",
+                "weight_kg": 117.9,
+                "body_fat_percent": 38.6,
+                "bmi": 38.5,
+                "steps": 5254,
+                "active_energy_kcal": 517,
+                "resting_heart_rate": 56,
+                "average_heart_rate": 73,
+            },
+        )
+        context = client.get("/context/health")
+
+    assert response.status_code == 201
+    assert context.status_code == 200
+    payload = context.json()
+    assert payload["area"]["slug"] == "health"
+    assert payload["profile"]["timezone"] == "Europe/Chisinau"
+    assert payload["recent_health_summaries"][0]["summary_date"] == "2026-05-11"
+    assert payload["health_progress"]["latest"]["metrics"]["weight_kg"] == 117.9
+    assert payload["health_progress"]["latest"]["metrics"]["steps"] == 5254
+    assert payload["health_progress"]["data_quality"]["trend_status"] == "needs_more_data"
+
+
 def test_health_progress_uses_latest_update_for_same_day_source(tmp_path, monkeypatch):
     with make_client(tmp_path, monkeypatch) as client:
         first = client.post(
@@ -447,7 +476,9 @@ def test_openclue_prompts_and_docs_reference_health_progress_contract():
 
     for text in [agents, skill, config]:
         assert "health_progress" in text
+        assert "/context/health" in text
         assert "Do not overreact to one bad day" in text
+    assert '"thinkingDefault": "low"' in config
     assert "sleep_duration_minutes" not in shortcut_docs
     assert "workouts_count" not in shortcut_docs
     assert "Xiaomi scale" in shortcut_docs

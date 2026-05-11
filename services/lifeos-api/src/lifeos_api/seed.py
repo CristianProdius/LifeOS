@@ -29,6 +29,7 @@ AREA_SEED = [
     ("business", "Business", "Deep work, AI-use discipline, shipped deliverables, and NGO outreach."),
     ("finance", "Finance", "Cash flow, proposal fund, car payoff, budgets, imports, and affordability."),
     ("food", "Food", "Meal rhythm, sweets control, late eating, protein, and weight trend."),
+    ("health", "Health", "Apple Health, Xiaomi scale, daily body metrics, and progress trends."),
     ("review", "Review", "Daily review, weekly review, lessons, blockers, and next plan."),
     ("admin", "Admin", "OpenClue setup, credentials, deployment, errors, and system maintenance."),
 ]

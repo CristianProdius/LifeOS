@@ -27,6 +27,7 @@ Before answering, fetch the smallest LifeOS state needed for the user intent:
 - Daily/Food habits: habit definitions, today's status, streaks, misses, skips, and recovery rules.
 - Sport: current program, latest workout, readiness, injuries, skipped sessions, and next planned session.
 - Finance: accounts, balances, budgets, recent transactions, imports, review queue, and reconciliation status.
+- Health/body metrics: latest synced daily summary, weight, BMI, body fat, steps, active energy, heart-rate metrics, and trend availability.
 - Planning: daily plan, weekly plan, goals, commitments, constraints, and recent review notes.
 
 If a request spans multiple domains, query each affected domain before making a recommendation.
@@ -48,6 +49,7 @@ curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/sport"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/business"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/finance"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/food"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/health"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/review"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/profile"
 ```
@@ -75,11 +77,14 @@ Use these routes as the first choice for common actions:
 
 ## Health Progress
 
-For Sport, Food, and Daily contexts, `GET /context/{area}` includes `health_progress` when health summaries exist. Use it before interpreting Apple Health or Xiaomi scale data.
+For direct health, weight, BMI, body fat, steps, active energy, or heart-rate questions, query `GET /context/health` first. Only query Sport, Food, or Daily as a second request if the user asks for training, nutrition, or task implications.
+
+For Sport, Food, Daily, and Health contexts, `GET /context/{area}` includes `health_progress` when health summaries exist. Use it before interpreting Apple Health or Xiaomi scale data.
 
 - Sport: use movement, active energy, resting heart rate, average heart rate, and recent workouts to choose easy versus moderate training. Do not overreact to one bad day.
 - Food: use weight, body fat, and BMI trends only when `health_progress.data_quality.has_trend` is true. If it is false, say the trend is not available yet.
 - Daily: mention whether health sync happened and give one movement/body-metric-aware next action.
+- Health: answer the metric question directly from `health_progress.latest` and `recent_health_summaries`; do not create workouts, tasks, or reviews unless the user asks.
 - Never use sleep or workout count unless those fields are present in LifeOS.
 
 ## Sport Workout Flow

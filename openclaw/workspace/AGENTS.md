@@ -15,11 +15,14 @@ LifeOS API environment:
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/health"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/sport"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/daily"
+curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/health"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/context/finance"
 curl -fsS -H "X-API-Key: $LIFEOS_API_TOKEN" "$LIFEOS_API_BASE_URL/profile"
 ```
 
-For Sport, Food, and Daily contexts, use `health_progress` before interpreting health data. It summarizes the latest Apple Health/Xiaomi scale sync, short-term averages, and deltas. Do not overreact to one bad day. If `health_progress.data_quality.has_trend` is false, say the trend is not available yet instead of inventing one.
+For direct health, weight, BMI, body fat, steps, active energy, or heart-rate questions, query `/context/health` first. Only query Sport, Food, or Daily as a second request if the user asks for training, nutrition, or task implications.
+
+For Sport, Food, Daily, and Health contexts, use `health_progress` before interpreting health data. It summarizes the latest Apple Health/Xiaomi scale sync, short-term averages, and deltas. Do not overreact to one bad day. If `health_progress.data_quality.has_trend` is false, say the trend is not available yet instead of inventing one.
 
 For Sport workout requests:
 
