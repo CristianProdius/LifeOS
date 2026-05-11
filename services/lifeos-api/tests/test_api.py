@@ -485,6 +485,57 @@ def test_health_progress_handles_missing_metrics_without_crashing(tmp_path, monk
     assert "body_fat_percent" in progress["data_quality"]["missing_latest_metrics"]
 
 
+def test_sport_progress_reports_low_confidence_with_sparse_data(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.get("/sport/progress")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["goal"]["target_weight_kg"] == 90
+    assert payload["stretch"]["weight_kg"] == 95
+    assert payload["confidence"] == "low"
+    assert 0 <= payload["on_track_score"] <= 100
+    assert any("weight trend" in reason.lower() for reason in payload["reasons"])
+
+
+def test_sport_today_creates_program_linked_home_workout_idempotently(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        first = client.post("/sport/today", json={"request_date": "2026-05-11", "location_context": "grandparents_home"})
+        second = client.post("/sport/today", json={"request_date": "2026-05-11", "location_context": "grandparents_home"})
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert first.json()["planned_workout"]["id"] == second.json()["planned_workout"]["id"]
+    planned = first.json()["planned_workout"]
+    assert planned["source"] == "program"
+    assert planned["program_id"] is not None
+    assert planned["program_week_id"] is not None
+    names = {exercise["name"].lower() for exercise in planned["exercises"]}
+    assert any("walk" in name for name in names)
+    assert "romanian deadlift" not in names
+
+
+def test_sport_today_gym_context_differs_from_home(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.post("/sport/today", json={"request_date": "2026-05-12", "location_context": "chisinau_gym"})
+
+    assert response.status_code == 201
+    names = {exercise["name"].lower() for exercise in response.json()["planned_workout"]["exercises"]}
+    assert any("press" in name or "pulldown" in name or "bike" in name for name in names)
+
+
+def test_sport_missed_day_creates_safe_adjustment(tmp_path, monkeypatch):
+    with make_client(tmp_path, monkeypatch) as client:
+        response = client.post("/sport/missed-day", json={"missed_date": "2026-05-11", "reason": "travel"})
+        progress = client.get("/sport/progress")
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["adjustment"]["reason"] == "missed_workout"
+    assert "easy" in " ".join(payload["next_actions"]).lower()
+    assert progress.status_code == 200
+
+
 def test_openclue_prompts_and_docs_reference_health_progress_contract():
     repo_root = Path(__file__).resolve().parents[3]
     agents = (repo_root / "openclaw/workspace/AGENTS.md").read_text()

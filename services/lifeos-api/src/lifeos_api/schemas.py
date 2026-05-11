@@ -95,6 +95,20 @@ class WorkoutPlanComplete(StrictModel):
     notes: str | None = None
 
 
+class SportTodayRequest(StrictModel):
+    request_date: date | None = None
+    location_context: str | None = Field(default=None, min_length=1, max_length=80)
+    available_minutes: int | None = Field(default=None, ge=10, le=180)
+    equipment: list[str] = Field(default_factory=list, max_length=20)
+    notes: str | None = None
+
+
+class SportMissedDayRequest(StrictModel):
+    missed_date: date
+    reason: str | None = Field(default=None, max_length=120)
+    notes: str | None = None
+
+
 class HealthDailySummaryUpsert(StrictModel):
     summary_date: date
     source: str = Field(min_length=1, max_length=80)
