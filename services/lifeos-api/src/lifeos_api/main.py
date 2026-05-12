@@ -20,6 +20,7 @@ from lifeos_api.api.deps import get_session
 from lifeos_api.core.security import require_api_key
 from lifeos_api.core.time import LIFEOS_DEFAULT_TIMEZONE, lifeos_today
 from lifeos_api.database import create_engine_and_session, get_database_url, init_database
+from lifeos_api.domain.health import build_health_progress, upsert_health_summary
 from lifeos_api.models import (
     AdviceLog,
     Area,
@@ -123,15 +124,6 @@ FOOD_DEFAULT_CALORIES = 1900
 FOOD_DEFAULT_PROTEIN_G = 150.0
 FOOD_DEFAULT_FAT_G = 60.0
 FOOD_CALORIE_FLOOR = 1800
-HEALTH_PROGRESS_METRICS = (
-    "steps",
-    "active_energy_kcal",
-    "weight_kg",
-    "body_fat_percent",
-    "bmi",
-    "resting_heart_rate",
-    "average_heart_rate",
-)
 
 
 def create_app(database_url: str | None = None, seed_database: bool = True) -> FastAPI:
@@ -521,7 +513,9 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         response: Response,
         session: Session = Depends(get_session),
     ) -> dict[str, Any]:
-        return upsert_health_summary(payload, response, session)
+        summary, created = upsert_health_summary(payload, session)
+        response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return health_daily_summary_to_dict(summary)
 
     @app.post("/integrations/shortcuts/health-daily-summary", status_code=status.HTTP_201_CREATED)
     def ingest_shortcut_health_daily_summary(
@@ -529,7 +523,9 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         response: Response,
         session: Session = Depends(get_session),
     ) -> dict[str, Any]:
-        return upsert_health_summary(payload, response, session)
+        summary, created = upsert_health_summary(payload, session)
+        response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return health_daily_summary_to_dict(summary)
 
     @app.get("/food/target")
     def get_food_target(session: Session = Depends(get_session)) -> dict[str, Any]:
@@ -896,34 +892,6 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         return weekly_review_to_dict(review)
 
     return app
-
-
-def upsert_health_summary(payload: HealthDailySummaryUpsert, response: Response, session: Session) -> dict[str, Any]:
-    user, _ = get_or_create_user(session)
-    summary = session.scalar(
-        select(HealthDailySummary).where(
-            HealthDailySummary.user_id == user.id,
-            HealthDailySummary.summary_date == payload.summary_date,
-            HealthDailySummary.source == payload.source,
-        )
-    )
-    created = summary is None
-    if summary is None:
-        summary = HealthDailySummary(
-            user_id=user.id,
-            summary_date=payload.summary_date,
-            source=payload.source,
-        )
-        session.add(summary)
-    updates = payload.model_dump(exclude_unset=True)
-    updates.pop("summary_date", None)
-    updates.pop("source", None)
-    for field, value in updates.items():
-        setattr(summary, field, value)
-    session.commit()
-    session.refresh(summary)
-    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
-    return health_daily_summary_to_dict(summary)
 
 
 def get_or_create_active_food_target(
@@ -1764,74 +1732,6 @@ def sport_today_response(
         "current_week": training_program_week_to_dict(current_week),
         "planned_workout": planned_workout_to_dict(plan),
         "program_reason": f"Week {current_week.week_number} focuses on {current_week.phase}.",
-    }
-
-
-def build_health_progress(summaries: list[HealthDailySummary]) -> dict[str, Any]:
-    ordered = sorted(summaries, key=lambda item: (item.summary_date, item.updated_at), reverse=True)
-    latest = ordered[0] if ordered else None
-    previous = next(
-        (summary for summary in ordered[1:] if latest is not None and summary.summary_date < latest.summary_date),
-        None,
-    )
-    latest_metrics = health_metric_values(latest) if latest else {}
-    previous_metrics = health_metric_values(previous) if previous else {}
-
-    averages: dict[str, float | int] = {}
-    deltas: dict[str, float | int | None] = {}
-    for metric in HEALTH_PROGRESS_METRICS:
-        values = [getattr(summary, metric) for summary in ordered if getattr(summary, metric) is not None]
-        if values:
-            averages[metric] = rounded_metric(sum(float(value) for value in values) / len(values))
-        latest_value = latest_metrics.get(metric)
-        previous_value = previous_metrics.get(metric)
-        deltas[metric] = (
-            rounded_metric(float(latest_value) - float(previous_value))
-            if latest_value is not None and previous_value is not None
-            else None
-        )
-
-    days_available = len({summary.summary_date for summary in ordered})
-    metric_days_available = {
-        metric: len({summary.summary_date for summary in ordered if getattr(summary, metric) is not None})
-        for metric in HEALTH_PROGRESS_METRICS
-    }
-    has_latest = latest is not None
-    has_trend = days_available >= 2
-    missing_latest_metrics = [
-        metric for metric in HEALTH_PROGRESS_METRICS if latest_metrics.get(metric) is None
-    ] if latest else list(HEALTH_PROGRESS_METRICS)
-
-    return {
-        "latest": health_progress_summary_to_dict(latest) if latest else None,
-        "previous": health_progress_summary_to_dict(previous) if previous else None,
-        "seven_day_average": averages,
-        "deltas": deltas,
-        "data_quality": {
-            "summary_count": len(ordered),
-            "days_available": days_available,
-            "metric_days_available": metric_days_available,
-            "has_latest": has_latest,
-            "has_trend": has_trend,
-            "trend_status": "available" if has_trend else "needs_more_data" if has_latest else "no_data",
-            "missing_latest_metrics": missing_latest_metrics,
-        },
-    }
-
-
-def health_metric_values(summary: HealthDailySummary | None) -> dict[str, Any]:
-    if summary is None:
-        return {metric: None for metric in HEALTH_PROGRESS_METRICS}
-    return {metric: getattr(summary, metric) for metric in HEALTH_PROGRESS_METRICS}
-
-
-def health_progress_summary_to_dict(summary: HealthDailySummary) -> dict[str, Any]:
-    return {
-        "id": summary.id,
-        "summary_date": summary.summary_date,
-        "source": summary.source,
-        "metrics": health_metric_values(summary),
-        "updated_at": summary.updated_at,
     }
 
 
