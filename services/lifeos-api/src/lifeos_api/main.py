@@ -14,8 +14,9 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from lifeos_api.api.deps import get_session
 from lifeos_api.core.security import require_api_key
-from lifeos_api.core.time import LIFEOS_DEFAULT_TIMEZONE, lifeos_today
+from lifeos_api.core.time import lifeos_today
 from lifeos_api.database import create_engine_and_session, get_database_url, init_database
+from lifeos_api.domain.daily import build_daily_recommendations
 from lifeos_api.domain.food import (
     FOOD_LOG_STATUSES,
     FoodLogNotFoundError,
@@ -39,6 +40,13 @@ from lifeos_api.domain.finance import (
     transaction_external_id,
 )
 from lifeos_api.domain.health import build_health_progress, upsert_health_summary
+from lifeos_api.domain.profile import (
+    context_personalization,
+    deep_merge_settings,
+    get_or_create_life_profile,
+    get_or_create_profile_setting,
+    profile_settings,
+)
 from lifeos_api.domain.sport import (
     SportProgramError,
     build_sport_progress,
@@ -69,9 +77,7 @@ from lifeos_api.models import (
     HabitDefinition,
     HabitLog,
     HealthDailySummary,
-    LifeProfile,
     PlannedWorkout,
-    ProfileSetting,
     Task,
     WeeklyReview,
     WorkoutExercise,
@@ -124,16 +130,8 @@ from lifeos_api.serializers import (
     weekly_review_to_dict,
     workout_to_dict,
 )
-from lifeos_api.seed import PERSONALIZATION_SEED, ensure_area, get_or_create_user, seed_reset_plan, seed_sport_program
+from lifeos_api.seed import ensure_area, get_or_create_user, seed_reset_plan, seed_sport_program
 from lifeos_api.utils import money, slugify
-
-DEFAULT_PROFILE = {
-    "timezone": LIFEOS_DEFAULT_TIMEZONE,
-    "default_context": "grandparents_home",
-    "training_level": "beginner_returning",
-    "goals": ["fat_loss", "consistency", "run_later"],
-    "equipment": {"walking_pad": "planned", "pull_up_bar": "planned"},
-}
 
 
 def sport_program_http_exception(exc: SportProgramError) -> HTTPException:
@@ -947,59 +945,3 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         return weekly_review_to_dict(review)
 
     return app
-
-
-def get_or_create_life_profile(session: Session, user_id: int) -> LifeProfile:
-    profile = session.scalar(select(LifeProfile).where(LifeProfile.user_id == user_id))
-    if profile is None:
-        profile = LifeProfile(user_id=user_id, **DEFAULT_PROFILE)
-        session.add(profile)
-        session.flush()
-    return profile
-
-
-def profile_settings(session: Session, user_id: int) -> dict[str, dict[str, Any]]:
-    settings = session.scalars(select(ProfileSetting).where(ProfileSetting.user_id == user_id).order_by(ProfileSetting.domain)).all()
-    return {setting.domain: setting.settings for setting in settings}
-
-
-def get_or_create_profile_setting(session: Session, user_id: int, domain: str) -> ProfileSetting:
-    setting = session.scalar(select(ProfileSetting).where(ProfileSetting.user_id == user_id, ProfileSetting.domain == domain))
-    if setting is None:
-        setting = ProfileSetting(user_id=user_id, domain=domain, settings=PERSONALIZATION_SEED.get(domain, {}))
-        session.add(setting)
-        session.flush()
-    return setting
-
-
-def deep_merge_settings(existing: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
-    merged = dict(existing or {})
-    for key, value in updates.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = deep_merge_settings(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
-def context_personalization(area_slug: str, settings: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    domains_by_area = {
-        "sport": ["sport", "daily", "coaching"],
-        "food": ["food", "coaching"],
-        "daily": ["daily", "sport", "food", "coaching"],
-        "health": ["sport", "food", "daily", "coaching"],
-    }
-    return {domain: settings[domain] for domain in domains_by_area.get(area_slug, []) if domain in settings}
-
-
-def build_daily_recommendations(capacity_minutes: int, tasks: list[dict[str, Any]], habits: list[dict[str, Any]]) -> list[str]:
-    recommendations = []
-    if tasks:
-        recommendations.append("Start with the highest-priority task before checking new inputs.")
-    if habits:
-        recommendations.append("Log the smallest version of each habit before the day gets noisy.")
-    if capacity_minutes < 60:
-        recommendations.append("Keep the plan narrow and protect recovery time.")
-    else:
-        recommendations.append("Leave at least one unscheduled buffer block.")
-    return recommendations
