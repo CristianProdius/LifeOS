@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import base64
-import binascii
 import hashlib
-import io
 import json
 import os
 from datetime import date
 from typing import Any
 
-import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_, select, text
@@ -29,6 +25,18 @@ from lifeos_api.domain.food import (
     food_log_item_from_payload,
     get_food_log_or_404,
     get_or_create_active_food_target,
+)
+from lifeos_api.domain.finance import (
+    FinanceError,
+    coerce_date,
+    finance_import_status,
+    get_finance_import_or_404,
+    get_or_create_account,
+    get_or_create_category,
+    maybe_store_upload,
+    normalize_finance_row,
+    rows_from_import_payload,
+    transaction_external_id,
 )
 from lifeos_api.domain.health import build_health_progress, upsert_health_summary
 from lifeos_api.domain.sport import (
@@ -65,7 +73,6 @@ from lifeos_api.models import (
     PlannedWorkout,
     ProfileSetting,
     Task,
-    UploadedFile,
     WeeklyReview,
     WorkoutExercise,
     WorkoutSession,
@@ -131,6 +138,10 @@ DEFAULT_PROFILE = {
 
 def sport_program_http_exception(exc: SportProgramError) -> HTTPException:
     return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=exc.detail)
+
+
+def finance_http_exception(exc: FinanceError) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail=exc.detail)
 
 
 def create_app(database_url: str | None = None, seed_database: bool = True) -> FastAPI:
@@ -676,44 +687,47 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
     @app.post("/finance/import", status_code=status.HTTP_201_CREATED)
     def import_finance(payload: FinanceImportRequest, session: Session = Depends(get_session)) -> dict[str, Any]:
         user, _ = get_or_create_user(session)
-        rows, upload = rows_from_import_payload(payload)
-        if upload is not None:
-            maybe_store_upload(session, user.id, upload)
+        try:
+            rows, upload = rows_from_import_payload(payload)
+            if upload is not None:
+                maybe_store_upload(session, user.id, upload)
 
-        import_hash = hashlib.sha256(
-            json.dumps({"source": payload.source, "rows": rows}, sort_keys=True, default=str).encode("utf-8")
-        ).hexdigest()
-        existing_import = session.scalar(select(FinanceImport).where(FinanceImport.import_hash == import_hash))
-        if existing_import is not None:
-            return {
-                "id": existing_import.id,
-                "source": existing_import.source,
-                "status": "duplicate",
-                "staged": 0,
-                "skipped": len(rows),
-                "review_items": existing_import.review_items,
-            }
+            import_hash = hashlib.sha256(
+                json.dumps({"source": payload.source, "rows": rows}, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest()
+            existing_import = session.scalar(select(FinanceImport).where(FinanceImport.import_hash == import_hash))
+            if existing_import is not None:
+                return {
+                    "id": existing_import.id,
+                    "source": existing_import.source,
+                    "status": "duplicate",
+                    "staged": 0,
+                    "skipped": len(rows),
+                    "review_items": existing_import.review_items,
+                }
 
-        review_items = []
-        for row_index, row in enumerate(rows):
-            normalized = normalize_finance_row(row)
-            normalized["row_index"] = row_index
-            normalized["external_id"] = transaction_external_id(payload.source, import_hash, row_index, normalized)
-            normalized["status"] = "pending"
-            review_items.append(jsonable_encoder(normalized))
+            review_items = []
+            for row_index, row in enumerate(rows):
+                normalized = normalize_finance_row(row)
+                normalized["row_index"] = row_index
+                normalized["external_id"] = transaction_external_id(payload.source, import_hash, row_index, normalized)
+                normalized["status"] = "pending"
+                review_items.append(jsonable_encoder(normalized))
 
-        import_record = FinanceImport(
-            user_id=user.id,
-            source=payload.source,
-            import_hash=import_hash,
-            status="review_pending",
-            raw_rows=jsonable_encoder(rows),
-            review_items=review_items,
-        )
-        session.add(import_record)
-        session.commit()
-        session.refresh(import_record)
-        return finance_import_to_dict(import_record, staged=len(review_items), skipped=0)
+            import_record = FinanceImport(
+                user_id=user.id,
+                source=payload.source,
+                import_hash=import_hash,
+                status="review_pending",
+                raw_rows=jsonable_encoder(rows),
+                review_items=review_items,
+            )
+            session.add(import_record)
+            session.commit()
+            session.refresh(import_record)
+            return finance_import_to_dict(import_record, staged=len(review_items), skipped=0)
+        except FinanceError as exc:
+            raise finance_http_exception(exc) from exc
 
     @app.post("/finance/import/{import_id}/approve")
     def approve_finance_import(
@@ -722,50 +736,53 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         session: Session = Depends(get_session),
     ) -> dict[str, Any]:
         user, _ = get_or_create_user(session)
-        import_record = get_finance_import_or_404(session, user.id, import_id)
-        selected = set(payload.row_indexes) if payload.row_indexes is not None else None
-        review_items = list(import_record.review_items or [])
-        imported = 0
-        skipped = 0
+        try:
+            import_record = get_finance_import_or_404(session, user.id, import_id)
+            selected = set(payload.row_indexes) if payload.row_indexes is not None else None
+            review_items = list(import_record.review_items or [])
+            imported = 0
+            skipped = 0
 
-        for item in review_items:
-            row_index = int(item["row_index"])
-            if selected is not None and row_index not in selected:
-                continue
-            if item.get("status") in {"approved", "rejected"}:
-                skipped += 1
-                continue
-            existing = session.scalar(select(FinanceTransaction).where(FinanceTransaction.external_id == item["external_id"]))
-            if existing is not None:
-                item["status"] = "duplicate"
-                skipped += 1
-                continue
+            for item in review_items:
+                row_index = int(item["row_index"])
+                if selected is not None and row_index not in selected:
+                    continue
+                if item.get("status") in {"approved", "rejected"}:
+                    skipped += 1
+                    continue
+                existing = session.scalar(select(FinanceTransaction).where(FinanceTransaction.external_id == item["external_id"]))
+                if existing is not None:
+                    item["status"] = "duplicate"
+                    skipped += 1
+                    continue
 
-            account = get_or_create_account(session, user.id, item["account"], item["currency"])
-            category = get_or_create_category(session, user.id, item["category"], float(item["amount"]))
-            session.add(
-                FinanceTransaction(
-                    user_id=user.id,
-                    account_id=account.id,
-                    category_id=category.id,
-                    import_id=import_record.id,
-                    transaction_date=coerce_date(item["date"]),
-                    description=item["description"],
-                    amount=float(item["amount"]),
-                    currency=item["currency"],
-                    external_id=item["external_id"],
+                account = get_or_create_account(session, user.id, item["account"], item["currency"])
+                category = get_or_create_category(session, user.id, item["category"], float(item["amount"]))
+                session.add(
+                    FinanceTransaction(
+                        user_id=user.id,
+                        account_id=account.id,
+                        category_id=category.id,
+                        import_id=import_record.id,
+                        transaction_date=coerce_date(item["date"]),
+                        description=item["description"],
+                        amount=float(item["amount"]),
+                        currency=item["currency"],
+                        external_id=item["external_id"],
+                    )
                 )
-            )
-            item["status"] = "approved"
-            imported += 1
+                item["status"] = "approved"
+                imported += 1
 
-        import_record.review_items = review_items
-        flag_modified(import_record, "review_items")
-        import_record.imported_count += imported
-        import_record.status = finance_import_status(review_items)
-        session.commit()
-        session.refresh(import_record)
-        return finance_import_to_dict(import_record, imported=imported, skipped=skipped)
+            import_record.review_items = review_items
+            flag_modified(import_record, "review_items")
+            import_record.imported_count += imported
+            import_record.status = finance_import_status(review_items)
+            session.commit()
+            session.refresh(import_record)
+            return finance_import_to_dict(import_record, imported=imported, skipped=skipped)
+        except FinanceError as exc:
+            raise finance_http_exception(exc) from exc
 
     @app.post("/finance/import/{import_id}/reject")
     def reject_finance_import(
@@ -774,23 +791,26 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
         session: Session = Depends(get_session),
     ) -> dict[str, Any]:
         user, _ = get_or_create_user(session)
-        import_record = get_finance_import_or_404(session, user.id, import_id)
-        selected = set(payload.row_indexes) if payload.row_indexes is not None else None
-        review_items = list(import_record.review_items or [])
-        rejected = 0
-        for item in review_items:
-            row_index = int(item["row_index"])
-            if selected is not None and row_index not in selected:
-                continue
-            if item.get("status") == "pending":
-                item["status"] = "rejected"
-                rejected += 1
-        import_record.review_items = review_items
-        flag_modified(import_record, "review_items")
-        import_record.status = finance_import_status(review_items)
-        session.commit()
-        session.refresh(import_record)
-        return finance_import_to_dict(import_record, rejected=rejected)
+        try:
+            import_record = get_finance_import_or_404(session, user.id, import_id)
+            selected = set(payload.row_indexes) if payload.row_indexes is not None else None
+            review_items = list(import_record.review_items or [])
+            rejected = 0
+            for item in review_items:
+                row_index = int(item["row_index"])
+                if selected is not None and row_index not in selected:
+                    continue
+                if item.get("status") == "pending":
+                    item["status"] = "rejected"
+                    rejected += 1
+            import_record.review_items = review_items
+            flag_modified(import_record, "review_items")
+            import_record.status = finance_import_status(review_items)
+            session.commit()
+            session.refresh(import_record)
+            return finance_import_to_dict(import_record, rejected=rejected)
+        except FinanceError as exc:
+            raise finance_http_exception(exc) from exc
 
     @app.get("/finance")
     def finance(session: Session = Depends(get_session)) -> dict[str, Any]:
@@ -972,121 +992,6 @@ def context_personalization(area_slug: str, settings: dict[str, dict[str, Any]])
     return {domain: settings[domain] for domain in domains_by_area.get(area_slug, []) if domain in settings}
 
 
-def rows_from_import_payload(payload: FinanceImportRequest) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-    if payload.rows is not None:
-        if len(payload.rows) > 1000:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="too many finance rows")
-        return payload.rows, None
-    if not payload.content_base64 or not payload.file_name:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="rows or file content is required")
-
-    try:
-        raw = base64.b64decode(payload.content_base64, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid base64 file content") from exc
-    if len(raw) > 5_000_000:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="finance import file is too large")
-    suffix = payload.file_name.lower().rsplit(".", 1)[-1]
-    buffer = io.BytesIO(raw)
-    try:
-        if suffix == "xlsx":
-            frame = pd.read_excel(buffer)
-        elif suffix == "csv":
-            frame = pd.read_csv(buffer)
-        elif suffix == "xls":
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="xls imports are not supported; export xlsx or csv")
-        else:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unsupported finance import file type")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="could not parse finance import file") from exc
-    rows = frame.to_dict(orient="records")
-    if len(rows) > 1000:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="too many finance rows")
-    upload = {
-        "file_name": payload.file_name,
-        "content_type": payload.content_type,
-        "byte_size": len(raw),
-        "sha256": hashlib.sha256(raw).hexdigest(),
-    }
-    return rows, upload
-
-
-def maybe_store_upload(session: Session, user_id: int, upload: dict[str, Any]) -> None:
-    existing = session.scalar(select(UploadedFile).where(UploadedFile.sha256 == upload["sha256"]))
-    if existing is None:
-        session.add(UploadedFile(user_id=user_id, **upload))
-
-
-def normalize_finance_row(row: dict[str, Any]) -> dict[str, Any]:
-    raw_date = row.get("date") or row.get("transaction_date")
-    raw_amount = row.get("amount")
-    if raw_date is None or raw_amount is None:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="finance rows need date and amount")
-    tx_date = coerce_date(raw_date)
-    amount = coerce_amount(raw_amount)
-    return {
-        "date": tx_date,
-        "description": str(row.get("description") or row.get("name") or "Transaction").strip(),
-        "amount": amount,
-        "category": slugify(str(row.get("category") or ("income" if amount >= 0 else "uncategorized"))),
-        "account": slugify(str(row.get("account") or "checking")),
-        "currency": str(row.get("currency") or "USD").upper()[:3],
-        "transaction_id": str(row.get("transaction_id") or row.get("id") or row.get("reference") or "").strip() or None,
-    }
-
-
-def coerce_date(value: Any) -> date:
-    if isinstance(value, date):
-        return value
-    if hasattr(value, "date"):
-        return value.date()
-    return date.fromisoformat(str(value)[:10])
-
-
-def coerce_amount(value: Any) -> float:
-    if isinstance(value, int | float):
-        return float(value)
-    text_value = str(value).strip().replace("$", "").replace(",", "")
-    if text_value.startswith("(") and text_value.endswith(")"):
-        text_value = f"-{text_value[1:-1]}"
-    return float(text_value)
-
-
-def transaction_external_id(source: str, import_hash: str, row_index: int, normalized: dict[str, Any]) -> str:
-    if normalized.get("transaction_id"):
-        raw = "|".join([source, "bank-id", str(normalized["transaction_id"]), normalized["account"]])
-    else:
-        raw = "|".join([source, import_hash, str(row_index)])
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def get_or_create_account(session: Session, user_id: int, account_name: str, currency: str = "USD") -> FinanceAccount:
-    account = session.scalar(select(FinanceAccount).where(FinanceAccount.user_id == user_id, FinanceAccount.name == account_name))
-    if account is None:
-        account = FinanceAccount(user_id=user_id, name=account_name, currency=currency)
-        session.add(account)
-        session.flush()
-    return account
-
-
-def get_or_create_category(session: Session, user_id: int, category_slug: str, amount: float) -> FinanceCategory:
-    category = session.scalar(
-        select(FinanceCategory).where(FinanceCategory.user_id == user_id, FinanceCategory.slug == category_slug)
-    )
-    if category is None:
-        category = FinanceCategory(
-            user_id=user_id,
-            slug=category_slug,
-            name=category_slug.replace("-", " ").title(),
-            kind="income" if amount >= 0 else "expense",
-        )
-        session.add(category)
-        session.flush()
-    return category
-
-
 def build_daily_recommendations(capacity_minutes: int, tasks: list[dict[str, Any]], habits: list[dict[str, Any]]) -> list[str]:
     recommendations = []
     if tasks:
@@ -1098,19 +1003,3 @@ def build_daily_recommendations(capacity_minutes: int, tasks: list[dict[str, Any
     else:
         recommendations.append("Leave at least one unscheduled buffer block.")
     return recommendations
-
-
-def get_finance_import_or_404(session: Session, user_id: int, import_id: int) -> FinanceImport:
-    import_record = session.scalar(select(FinanceImport).where(FinanceImport.id == import_id, FinanceImport.user_id == user_id))
-    if import_record is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="finance import not found")
-    return import_record
-
-
-def finance_import_status(review_items: list[dict[str, Any]]) -> str:
-    statuses = {item.get("status") for item in review_items}
-    if statuses <= {"approved", "duplicate"}:
-        return "complete"
-    if statuses <= {"rejected"}:
-        return "rejected"
-    return "review_pending"
