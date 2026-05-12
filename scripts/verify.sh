@@ -40,7 +40,9 @@ for path in scripts/bootstrap.sh scripts/migrate.sh scripts/seed.sh scripts/back
   [[ -x "$path" ]] || die "$path is not executable"
 done
 
-bash -n scripts/bootstrap.sh scripts/migrate.sh scripts/seed.sh scripts/backup.sh scripts/deploy-vps.sh scripts/render-openclaw-config.sh scripts/openclaw-cron-setup.sh scripts/verify.sh
+for script in scripts/bootstrap.sh scripts/migrate.sh scripts/seed.sh scripts/backup.sh scripts/deploy-vps.sh scripts/render-openclaw-config.sh scripts/openclaw-cron-setup.sh scripts/verify.sh; do
+  bash -n "$script"
+done
 
 for protected_path in \
   ".env" \
@@ -66,6 +68,9 @@ grep -Fq 'openclaw/workspace/skills/' scripts/deploy-vps.sh || die "deploy scrip
 if LC_ALL=C grep -R -n '[^[:print:][:space:]]' .gitignore .env.example docker-compose.yml scripts; then
   die "non-ASCII or control characters detected"
 fi
+
+command -v uv >/dev/null 2>&1 || die "uv is required"
+(cd services/lifeos-api && uv run pytest tests/test_architecture.py)
 
 command -v docker >/dev/null 2>&1 || die "docker is required"
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required"
