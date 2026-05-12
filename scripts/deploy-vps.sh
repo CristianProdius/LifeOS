@@ -90,6 +90,9 @@ rsync_args=(
   --exclude 'openclaw/config/openclaw.json'
   --exclude 'openclaw/config/openclaw.json.*'
   --exclude 'services/lifeos-api/.venv/'
+  --exclude 'services/lifeos-api/build/'
+  --exclude 'services/lifeos-api/dist/'
+  --exclude 'services/lifeos-api/src/*.egg-info/'
   --exclude '**/__pycache__/'
   --exclude '.git/'
   --exclude '.pytest_cache/'
@@ -100,6 +103,10 @@ if [[ "$dry_run" -eq 1 ]]; then
 fi
 
 rsync "${rsync_args[@]}" ./ "$host:$remote_dir/"
+
+if [[ "$dry_run" -eq 0 ]]; then
+  remote "rm -rf '$remote_dir/services/lifeos-api/build' '$remote_dir/services/lifeos-api/dist' '$remote_dir/services/lifeos-api/src/lifeos_api.egg-info'"
+fi
 
 openclaw_rsync_args=(-az)
 if [[ "$dry_run" -eq 1 ]]; then
