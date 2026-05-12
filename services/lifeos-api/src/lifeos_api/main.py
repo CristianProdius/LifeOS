@@ -79,8 +79,30 @@ from lifeos_api.schemas import (
     WorkoutPlanUpdate,
     WorkoutRecommendationRequest,
 )
+from lifeos_api.serializers import (
+    area_to_dict,
+    checkin_to_dict,
+    daily_plan_to_dict,
+    daily_review_to_dict,
+    finance_import_to_dict,
+    food_daily_review_to_dict,
+    food_log_to_dict,
+    food_target_to_dict,
+    habit_log_to_dict,
+    habit_to_dict,
+    health_daily_summary_to_dict,
+    planned_workout_to_dict,
+    profile_to_dict,
+    program_adjustment_to_dict,
+    sport_goal_to_dict,
+    task_to_dict,
+    training_program_to_dict,
+    training_program_week_to_dict,
+    weekly_review_to_dict,
+    workout_to_dict,
+)
 from lifeos_api.seed import PERSONALIZATION_SEED, ensure_area, get_or_create_user, seed_reset_plan, seed_sport_program
-from lifeos_api.utils import money, slugify
+from lifeos_api.utils import money, rounded_metric, slugify
 
 DEFAULT_PROFILE = {
     "timezone": LIFEOS_DEFAULT_TIMEZONE,
@@ -1745,270 +1767,6 @@ def sport_today_response(
     }
 
 
-def profile_to_dict(profile: LifeProfile, personalization: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
-    payload = {
-        "id": profile.id,
-        "timezone": profile.timezone,
-        "default_context": profile.default_context,
-        "training_level": profile.training_level,
-        "goals": profile.goals,
-        "equipment": profile.equipment,
-    }
-    if personalization is not None:
-        payload["personalization"] = personalization
-    return payload
-
-
-def area_to_dict(area: Area) -> dict[str, Any]:
-    return {"id": area.id, "slug": area.slug, "name": area.name, "description": area.description}
-
-
-def task_to_dict(task: Task) -> dict[str, Any]:
-    return {
-        "id": task.id,
-        "title": task.title,
-        "area": task.area.slug if task.area else None,
-        "status": task.status,
-        "priority": task.priority,
-        "due_date": task.due_date,
-        "notes": task.notes,
-        "created_at": task.created_at,
-        "updated_at": task.updated_at,
-    }
-
-
-def habit_to_dict(habit: HabitDefinition) -> dict[str, Any]:
-    return {
-        "id": habit.id,
-        "slug": habit.slug,
-        "name": habit.name,
-        "target_value": habit.target_value,
-        "unit": habit.unit,
-        "frequency": habit.frequency,
-    }
-
-
-def habit_log_to_dict(log: HabitLog) -> dict[str, Any]:
-    return {
-        "id": log.id,
-        "habit": log.habit.slug,
-        "log_date": log.log_date,
-        "value": log.value,
-        "notes": log.notes,
-    }
-
-
-def checkin_to_dict(checkin: Checkin) -> dict[str, Any]:
-    return {
-        "id": checkin.id,
-        "area": checkin.area.slug if checkin.area else None,
-        "mood": checkin.mood,
-        "energy": checkin.energy,
-        "stress": checkin.stress,
-        "notes": checkin.notes,
-        "created_at": checkin.created_at,
-    }
-
-
-def workout_to_dict(workout: WorkoutSession) -> dict[str, Any]:
-    return {
-        "id": workout.id,
-        "session_date": workout.session_date,
-        "workout_type": workout.workout_type,
-        "duration_minutes": workout.duration_minutes,
-        "intensity": workout.intensity,
-        "notes": workout.notes,
-        "exercises": [
-            {
-                "id": exercise.id,
-                "name": exercise.name,
-                "sets": exercise.sets,
-                "reps": exercise.reps,
-                "weight": exercise.weight,
-                "duration_seconds": exercise.duration_seconds,
-                "notes": exercise.notes,
-            }
-            for exercise in workout.exercises
-        ],
-    }
-
-
-def planned_workout_to_dict(plan: PlannedWorkout) -> dict[str, Any]:
-    return {
-        "id": plan.id,
-        "plan_date": plan.plan_date,
-        "status": plan.status,
-        "location_context": plan.location_context,
-        "goal": plan.goal,
-        "intensity": plan.intensity,
-        "duration_minutes": plan.duration_minutes,
-        "equipment": plan.equipment,
-        "exercises": plan.exercises,
-        "telegram_metadata": plan.telegram_metadata,
-        "notes": plan.notes,
-        "completed_workout_id": plan.completed_workout_id,
-        "program_id": plan.program_id,
-        "program_week_id": plan.program_week_id,
-        "program_day": plan.program_day,
-        "source": plan.source,
-        "adaptation_reason": plan.adaptation_reason,
-        "created_at": plan.created_at,
-        "updated_at": plan.updated_at,
-    }
-
-
-def sport_goal_to_dict(goal: SportGoal) -> dict[str, Any]:
-    return {
-        "id": goal.id,
-        "name": goal.name,
-        "status": goal.status,
-        "start_date": goal.start_date,
-        "start_weight_kg": goal.start_weight_kg,
-        "target_weight_kg": goal.target_weight_kg,
-        "target_date": goal.target_date,
-        "stretch_weight_kg": goal.stretch_weight_kg,
-        "stretch_date": goal.stretch_date,
-        "healthy_weekly_loss_min_kg": goal.healthy_weekly_loss_min_kg,
-        "healthy_weekly_loss_max_kg": goal.healthy_weekly_loss_max_kg,
-        "notes": goal.notes,
-    }
-
-
-def training_program_to_dict(program: TrainingProgram) -> dict[str, Any]:
-    return {
-        "id": program.id,
-        "sport_goal_id": program.sport_goal_id,
-        "name": program.name,
-        "status": program.status,
-        "start_date": program.start_date,
-        "duration_weeks": program.duration_weeks,
-        "current_week_number": program.current_week_number,
-        "default_location_context": program.default_location_context,
-        "notes": program.notes,
-    }
-
-
-def training_program_week_to_dict(week: TrainingProgramWeek) -> dict[str, Any]:
-    return {
-        "id": week.id,
-        "program_id": week.program_id,
-        "week_number": week.week_number,
-        "phase": week.phase,
-        "week_start": week.week_start,
-        "week_end": week.week_end,
-        "target_weight_kg": week.target_weight_kg,
-        "target_steps_avg": week.target_steps_avg,
-        "target_active_minutes": week.target_active_minutes,
-        "target_strength_sessions": week.target_strength_sessions,
-        "target_cardio_sessions": week.target_cardio_sessions,
-        "target_recovery_sessions": week.target_recovery_sessions,
-        "plan_json": week.plan_json,
-    }
-
-
-def program_adjustment_to_dict(adjustment: ProgramAdjustment) -> dict[str, Any]:
-    return {
-        "id": adjustment.id,
-        "program_id": adjustment.program_id,
-        "adjustment_date": adjustment.adjustment_date,
-        "reason": adjustment.reason,
-        "input_payload": adjustment.input_payload,
-        "output_payload": adjustment.output_payload,
-        "notes": adjustment.notes,
-        "created_at": adjustment.created_at,
-    }
-
-
-def health_daily_summary_to_dict(summary: HealthDailySummary) -> dict[str, Any]:
-    return {
-        "id": summary.id,
-        "summary_date": summary.summary_date,
-        "source": summary.source,
-        "sleep_duration_minutes": summary.sleep_duration_minutes,
-        "sleep_quality": summary.sleep_quality,
-        "weight_kg": summary.weight_kg,
-        "body_fat_percent": summary.body_fat_percent,
-        "bmi": summary.bmi,
-        "steps": summary.steps,
-        "active_energy_kcal": summary.active_energy_kcal,
-        "workouts_count": summary.workouts_count,
-        "resting_heart_rate": summary.resting_heart_rate,
-        "average_heart_rate": summary.average_heart_rate,
-        "notes": summary.notes,
-        "created_at": summary.created_at,
-        "updated_at": summary.updated_at,
-    }
-
-
-def food_target_to_dict(target: FoodTarget) -> dict[str, Any]:
-    return {
-        "id": target.id,
-        "start_date": target.start_date,
-        "end_date": target.end_date,
-        "status": target.status,
-        "calories": target.calories,
-        "protein_g": rounded_metric(float(target.protein_g)),
-        "carbs_g": rounded_metric(float(target.carbs_g)) if target.carbs_g is not None else None,
-        "fat_g": rounded_metric(float(target.fat_g)) if target.fat_g is not None else None,
-        "calorie_floor": target.calorie_floor,
-        "source": target.source,
-        "calculation": target.calculation,
-        "notes": target.notes,
-        "created_at": target.created_at,
-        "updated_at": target.updated_at,
-    }
-
-
-def food_log_to_dict(food_log: FoodLog) -> dict[str, Any]:
-    return {
-        "id": food_log.id,
-        "log_date": food_log.log_date,
-        "meal_type": food_log.meal_type,
-        "status": food_log.status,
-        "source": food_log.source,
-        "description": food_log.description,
-        "calories": food_log.calories,
-        "protein_g": rounded_metric(float(food_log.protein_g)),
-        "carbs_g": rounded_metric(float(food_log.carbs_g)) if food_log.carbs_g is not None else None,
-        "fat_g": rounded_metric(float(food_log.fat_g)) if food_log.fat_g is not None else None,
-        "confidence": food_log.confidence,
-        "telegram_metadata": food_log.telegram_metadata,
-        "notes": food_log.notes,
-        "items": [food_log_item_to_dict(item) for item in food_log.items],
-        "created_at": food_log.created_at,
-        "updated_at": food_log.updated_at,
-    }
-
-
-def food_log_item_to_dict(item: FoodLogItem) -> dict[str, Any]:
-    return {
-        "id": item.id,
-        "name": item.name,
-        "quantity": rounded_metric(float(item.quantity)) if item.quantity is not None else None,
-        "unit": item.unit,
-        "calories": item.calories,
-        "protein_g": rounded_metric(float(item.protein_g)) if item.protein_g is not None else None,
-        "carbs_g": rounded_metric(float(item.carbs_g)) if item.carbs_g is not None else None,
-        "fat_g": rounded_metric(float(item.fat_g)) if item.fat_g is not None else None,
-        "confidence": item.confidence,
-        "notes": item.notes,
-    }
-
-
-def food_daily_review_to_dict(review: FoodDailyReview) -> dict[str, Any]:
-    return {
-        "id": review.id,
-        "review_date": review.review_date,
-        "hunger": review.hunger,
-        "energy": review.energy,
-        "adherence_status": review.adherence_status,
-        "notes": review.notes,
-        "recommendations": review.recommendations,
-        "created_at": review.created_at,
-        "updated_at": review.updated_at,
-    }
-
-
 def build_health_progress(summaries: list[HealthDailySummary]) -> dict[str, Any]:
     ordered = sorted(summaries, key=lambda item: (item.summary_date, item.updated_at), reverse=True)
     latest = ordered[0] if ordered else None
@@ -2061,6 +1819,12 @@ def build_health_progress(summaries: list[HealthDailySummary]) -> dict[str, Any]
     }
 
 
+def health_metric_values(summary: HealthDailySummary | None) -> dict[str, Any]:
+    if summary is None:
+        return {metric: None for metric in HEALTH_PROGRESS_METRICS}
+    return {metric: getattr(summary, metric) for metric in HEALTH_PROGRESS_METRICS}
+
+
 def health_progress_summary_to_dict(summary: HealthDailySummary) -> dict[str, Any]:
     return {
         "id": summary.id,
@@ -2069,17 +1833,6 @@ def health_progress_summary_to_dict(summary: HealthDailySummary) -> dict[str, An
         "metrics": health_metric_values(summary),
         "updated_at": summary.updated_at,
     }
-
-
-def health_metric_values(summary: HealthDailySummary | None) -> dict[str, Any]:
-    if summary is None:
-        return {metric: None for metric in HEALTH_PROGRESS_METRICS}
-    return {metric: getattr(summary, metric) for metric in HEALTH_PROGRESS_METRICS}
-
-
-def rounded_metric(value: float) -> float | int:
-    rounded = round(value, 2)
-    return int(rounded) if rounded.is_integer() else rounded
 
 
 def build_workout_recommendation(payload: WorkoutRecommendationRequest) -> dict[str, Any]:
@@ -2363,42 +2116,6 @@ def build_daily_recommendations(capacity_minutes: int, tasks: list[dict[str, Any
     return recommendations
 
 
-def daily_plan_to_dict(plan: DailyPlan, focus_area: str | None) -> dict[str, Any]:
-    return {
-        "id": plan.id,
-        "plan_date": plan.plan_date,
-        "focus_area": focus_area,
-        "capacity_minutes": plan.capacity_minutes,
-        "tasks": plan.tasks,
-        "habits": plan.habits,
-        "recommendations": plan.recommendations,
-    }
-
-
-def daily_review_to_dict(review: DailyReview) -> dict[str, Any]:
-    return {
-        "id": review.id,
-        "review_date": review.review_date,
-        "wins": review.wins,
-        "blockers": review.blockers,
-        "mood": review.mood,
-        "energy": review.energy,
-        "notes": review.notes,
-    }
-
-
-def weekly_review_to_dict(review: WeeklyReview) -> dict[str, Any]:
-    return {
-        "id": review.id,
-        "week_start": review.week_start,
-        "wins": review.wins,
-        "lessons": review.lessons,
-        "next_focus": review.next_focus,
-        "score": review.score,
-        "notes": review.notes,
-    }
-
-
 def get_finance_import_or_404(session: Session, user_id: int, import_id: int) -> FinanceImport:
     import_record = session.scalar(select(FinanceImport).where(FinanceImport.id == import_id, FinanceImport.user_id == user_id))
     if import_record is None:
@@ -2413,25 +2130,3 @@ def finance_import_status(review_items: list[dict[str, Any]]) -> str:
     if statuses <= {"rejected"}:
         return "rejected"
     return "review_pending"
-
-
-def finance_import_to_dict(
-    import_record: FinanceImport,
-    *,
-    staged: int | None = None,
-    imported: int = 0,
-    skipped: int = 0,
-    rejected: int = 0,
-) -> dict[str, Any]:
-    review_items = import_record.review_items or []
-    return {
-        "id": import_record.id,
-        "source": import_record.source,
-        "status": import_record.status,
-        "staged": len(review_items) if staged is None else staged,
-        "imported": imported,
-        "imported_total": import_record.imported_count,
-        "skipped": skipped,
-        "rejected": rejected,
-        "review_items": review_items,
-    }

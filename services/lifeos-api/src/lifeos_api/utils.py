@@ -11,3 +11,8 @@ def slugify(value: str) -> str:
 
 def money(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def rounded_metric(value: float) -> float | int:
+    rounded = round(value, 2)
+    return int(rounded) if rounded.is_integer() else rounded
