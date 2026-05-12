@@ -232,7 +232,7 @@ The bootstrap script validates secrets, renders `openclaw/config/openclaw.json`,
 
 ### Deployment Sync Safety
 
-Do not delete OpenClaw runtime auth state during deploys. The VPS directory `openclaw/config` is not only generated config; it also contains runtime auth, identity, Telegram offsets, task state, and model auth profiles. In particular, this file must survive deploys:
+Do not delete OpenClaw runtime state during deploys. The VPS directory `openclaw/config` is not only generated config; it also contains runtime auth, identity, Telegram offsets, task state, cron reminder jobs, and model auth profiles. In particular, this file must survive deploys:
 
 ```text
 openclaw/config/agents/main/agent/auth-profiles.json
@@ -243,6 +243,8 @@ If it is deleted, Telegram replies fail with:
 ```text
 Missing API key for provider "openai-codex"
 ```
+
+If `openclaw/config/cron/` is deleted, the OpenClaw cron job list becomes empty and the morning/daily Telegram reminders do not fire.
 
 When using `rsync --delete`, exclude runtime state:
 
@@ -255,6 +257,7 @@ rsync -az --delete \
   --exclude 'openclaw/config/logs/' \
   --exclude 'openclaw/config/telegram/' \
   --exclude 'openclaw/config/tasks/' \
+  --exclude 'openclaw/config/cron/' \
   --exclude 'openclaw/config/canvas/' \
   --exclude 'openclaw/config/plugin-skills/' \
   --exclude 'openclaw/config/openclaw.json' \
@@ -272,6 +275,20 @@ docker compose --env-file .env run --rm openclaw-cli models status --probe
 ```
 
 Expected: `openai-codex/gpt-5.5` reports `ok`.
+
+Also verify reminder jobs:
+
+```bash
+cd /opt/lifeos
+docker compose --env-file .env run --rm --no-deps openclaw-cli cron status
+```
+
+Expected: `jobs` is `5`. If `jobs` is `0`, reinstall the reminder jobs:
+
+```bash
+cd /opt/lifeos
+./scripts/openclaw-cron-setup.sh
+```
 
 OpenClaw also needs model/provider authentication. OpenClue is configured to use the ChatGPT/Codex subscription route, not an OpenAI API key:
 
