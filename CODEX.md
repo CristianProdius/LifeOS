@@ -13,6 +13,8 @@ The production OpenClaw config directory is mounted from:
 It contains generated/runtime files that are not safe to recreate from git alone, including:
 
 ```text
+openclaw/config/
+openclaw/workspace/
 openclaw/config/agents/main/agent/auth-profiles.json
 openclaw/config/agents/
 openclaw/config/identity/
@@ -30,11 +32,19 @@ Missing API key for provider "openai-codex"
 
 If `openclaw/config/cron/` is deleted, morning/daily Telegram reminders stop because the OpenClaw cron job list is empty.
 
-When syncing code to the VPS, never run broad `rsync --delete` against `/opt/lifeos` unless runtime state is explicitly excluded. Safe deployment sync must exclude at least:
+Always deploy with:
+
+```bash
+./scripts/deploy-vps.sh
+```
+
+Do not copy old one-off `rsync` snippets from implementation plans. When syncing code to the VPS manually, never run broad `rsync --delete` against `/opt/lifeos` unless runtime state is explicitly excluded. Safe deployment sync must exclude at least:
 
 ```text
 .env
 backups/
+openclaw/config/
+openclaw/workspace/
 openclaw/config/agents/
 openclaw/config/identity/
 openclaw/config/logs/

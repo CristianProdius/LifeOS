@@ -232,6 +232,14 @@ The bootstrap script validates secrets, renders `openclaw/config/openclaw.json`,
 
 ### Deployment Sync Safety
 
+Use the deploy script for normal VPS deploys:
+
+```bash
+./scripts/deploy-vps.sh
+```
+
+The script backs up Postgres, syncs code with protected runtime exclusions, rebuilds/restarts the stack, verifies model auth, verifies OpenClaw cron has `5` jobs, and reruns `scripts/openclaw-cron-setup.sh` automatically if the jobs are missing.
+
 Do not delete OpenClaw runtime state during deploys. The VPS directory `openclaw/config` is not only generated config; it also contains runtime auth, identity, Telegram offsets, task state, cron reminder jobs, and model auth profiles. In particular, this file must survive deploys:
 
 ```text
@@ -246,12 +254,14 @@ Missing API key for provider "openai-codex"
 
 If `openclaw/config/cron/` is deleted, the OpenClaw cron job list becomes empty and the morning/daily Telegram reminders do not fire.
 
-When using `rsync --delete`, exclude runtime state:
+When using `rsync --delete` manually, exclude runtime state and sync OpenClaw source-controlled files separately:
 
 ```bash
 rsync -az --delete \
   --exclude '.env' \
   --exclude 'backups/' \
+  --exclude 'openclaw/config/' \
+  --exclude 'openclaw/workspace/' \
   --exclude 'openclaw/config/agents/' \
   --exclude 'openclaw/config/identity/' \
   --exclude 'openclaw/config/logs/' \
@@ -265,6 +275,13 @@ rsync -az --delete \
   --exclude 'services/lifeos-api/.venv/' \
   --exclude '**/__pycache__/' \
   ./ jira-microlab-automation:/opt/lifeos/
+
+rsync -az openclaw/config/openclaw.template.json \
+  jira-microlab-automation:/opt/lifeos/openclaw/config/openclaw.template.json
+rsync -az openclaw/workspace/AGENTS.md \
+  jira-microlab-automation:/opt/lifeos/openclaw/workspace/AGENTS.md
+rsync -az --delete openclaw/workspace/skills/ \
+  jira-microlab-automation:/opt/lifeos/openclaw/workspace/skills/
 ```
 
 After every deploy, verify model auth:
