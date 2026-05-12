@@ -1,0 +1,114 @@
+[
+  {
+    "reset_day": 1,
+    "title": "Book sleep apnea check",
+    "area_slug": "daily",
+    "description": "Schedule a doctor consultation or sleep study discussion.",
+    "priority": 5,
+    "estimated_minutes": 20
+  },
+  {
+    "reset_day": 2,
+    "title": "Set alarm across room",
+    "area_slug": "daily",
+    "description": "Make the 06:30 wake-up require standing up within 30 seconds.",
+    "priority": 5,
+    "estimated_minutes": 10
+  },
+  {
+    "reset_day": 3,
+    "title": "Order walking pad",
+    "area_slug": "sport",
+    "description": "Choose a model with at least 130 kg support, ideally 140-150 kg.",
+    "priority": 5,
+    "estimated_minutes": 45
+  },
+  {
+    "reset_day": 4,
+    "title": "Install pull-up bar",
+    "area_slug": "sport",
+    "description": "Set up a safe pull-up bar and test dead hangs.",
+    "priority": 4,
+    "estimated_minutes": 30
+  },
+  {
+    "reset_day": 5,
+    "title": "Remove sweets from office",
+    "area_slug": "food",
+    "description": "Clear chocolates and sweets from the office and bedroom.",
+    "priority": 5,
+    "estimated_minutes": 20
+  },
+  {
+    "reset_day": 6,
+    "title": "Write AI-use work rule",
+    "area_slug": "business",
+    "description": "Before Claude or Codex, write problem, done state, constraints, and verification.",
+    "priority": 5,
+    "estimated_minutes": 15
+  },
+  {
+    "reset_day": 7,
+    "title": "Create NGO outreach list",
+    "area_slug": "business",
+    "description": "Collect the first 50 NGO leads for website or SEO outreach.",
+    "priority": 4,
+    "estimated_minutes": 60
+  },
+  {
+    "reset_day": 8,
+    "title": "Send first 10 NGO messages",
+    "area_slug": "business",
+    "description": "Send concise audit/outreach messages to 10 NGOs.",
+    "priority": 5,
+    "estimated_minutes": 45
+  },
+  {
+    "reset_day": 9,
+    "title": "Define proposal fund envelope",
+    "area_slug": "finance",
+    "description": "Create a 5000 USD proposal target and monthly saving line.",
+    "priority": 5,
+    "estimated_minutes": 20
+  },
+  {
+    "reset_day": 10,
+    "title": "Define car payoff tracker",
+    "area_slug": "finance",
+    "description": "Create a 10500 EUR car payoff target and note no early penalty.",
+    "priority": 5,
+    "estimated_minutes": 20
+  },
+  {
+    "reset_day": 11,
+    "title": "Plan two reliable meals",
+    "area_slug": "food",
+    "description": "Choose two repeatable meals with protein that reduce sweets risk.",
+    "priority": 4,
+    "estimated_minutes": 30
+  },
+  {
+    "reset_day": 12,
+    "title": "Complete first weekly review",
+    "area_slug": "review",
+    "description": "Review wake-ups, porn, sweets, walking, work shipped, and outreach.",
+    "priority": 5,
+    "estimated_minutes": 45
+  },
+  {
+    "reset_day": 13,
+    "title": "Create week 2 task list",
+    "area_slug": "review",
+    "description": "Turn the next seven days into concrete daily tasks.",
+    "priority": 4,
+    "estimated_minutes": 30
+  },
+  {
+    "reset_day": 14,
+    "title": "Prepare OpenClue adjustment notes",
+    "area_slug": "admin",
+    "description": "Record what the bot got wrong and what needs to be added next.",
+    "priority": 4,
+    "estimated_minutes": 30
+  }
+]

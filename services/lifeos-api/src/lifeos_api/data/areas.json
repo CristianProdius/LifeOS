@@ -1,0 +1,42 @@
+[
+  {
+    "slug": "daily",
+    "name": "Daily",
+    "description": "Morning launch, daily plan, non-negotiables, and status checks."
+  },
+  {
+    "slug": "sport",
+    "name": "Sport",
+    "description": "Walking pad, pull-up bar, swimming, gym, recovery, and run/walk progression."
+  },
+  {
+    "slug": "business",
+    "name": "Business",
+    "description": "Deep work, AI-use discipline, shipped deliverables, and NGO outreach."
+  },
+  {
+    "slug": "finance",
+    "name": "Finance",
+    "description": "Cash flow, proposal fund, car payoff, budgets, imports, and affordability."
+  },
+  {
+    "slug": "food",
+    "name": "Food",
+    "description": "Meal rhythm, sweets control, late eating, protein, and weight trend."
+  },
+  {
+    "slug": "health",
+    "name": "Health",
+    "description": "Apple Health, Xiaomi scale, daily body metrics, and progress trends."
+  },
+  {
+    "slug": "review",
+    "name": "Review",
+    "description": "Daily review, weekly review, lessons, blockers, and next plan."
+  },
+  {
+    "slug": "admin",
+    "name": "Admin",
+    "description": "OpenClue setup, credentials, deployment, errors, and system maintenance."
+  }
+]

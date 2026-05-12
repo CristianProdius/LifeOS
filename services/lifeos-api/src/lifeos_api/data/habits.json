@@ -1,0 +1,72 @@
+[
+  {
+    "slug": "out-of-bed-0630",
+    "name": "Out of bed by 06:30",
+    "area_slug": "daily",
+    "target_value": 1,
+    "unit": "check"
+  },
+  {
+    "slug": "no-phone-in-bed",
+    "name": "No phone in bed",
+    "area_slug": "daily",
+    "target_value": 1,
+    "unit": "check"
+  },
+  {
+    "slug": "walking-done",
+    "name": "Walking done",
+    "area_slug": "sport",
+    "target_value": 60,
+    "unit": "minutes"
+  },
+  {
+    "slug": "strength-swim-gym-done",
+    "name": "Strength, swim, or gym done",
+    "area_slug": "sport",
+    "target_value": 1,
+    "unit": "session"
+  },
+  {
+    "slug": "no-porn",
+    "name": "No porn",
+    "area_slug": "daily",
+    "target_value": 1,
+    "unit": "check"
+  },
+  {
+    "slug": "no-unplanned-sweets",
+    "name": "No unplanned sweets",
+    "area_slug": "food",
+    "target_value": 1,
+    "unit": "check"
+  },
+  {
+    "slug": "no-late-eating",
+    "name": "No eating after 20:30",
+    "area_slug": "food",
+    "target_value": 1,
+    "unit": "check"
+  },
+  {
+    "slug": "business-deliverable-shipped",
+    "name": "Business deliverable shipped",
+    "area_slug": "business",
+    "target_value": 1,
+    "unit": "deliverable"
+  },
+  {
+    "slug": "ngo-outreach-done",
+    "name": "NGO outreach done",
+    "area_slug": "business",
+    "target_value": 10,
+    "unit": "messages"
+  },
+  {
+    "slug": "weight-logged",
+    "name": "Weight logged",
+    "area_slug": "food",
+    "target_value": 1,
+    "unit": "entry"
+  }
+]
