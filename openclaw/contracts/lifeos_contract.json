@@ -1,0 +1,55 @@
+{
+  "assistant_name": "OpenClue",
+  "source_of_truth": "LifeOS API",
+  "forbidden_tools": [
+    "memory_search"
+  ],
+  "required_context_reads": {
+    "sport": [
+      "/context/sport",
+      "/sport/today",
+      "/sport/progress"
+    ],
+    "food": [
+      "/context/food",
+      "/food/target",
+      "/food/daily-summary",
+      "/food/progress"
+    ],
+    "finance": [
+      "/context/finance",
+      "/finance/summary"
+    ],
+    "health": [
+      "/context/health"
+    ],
+    "daily": [
+      "/context/daily"
+    ]
+  },
+  "endpoint_notes": {
+    "/sport/today": "POST only for workout recommendation flows. It creates or reuses today's planned workout, so do not call it for general Sport questions like soreness, adherence, progress, or weight."
+  },
+  "write_before_claiming": [
+    "food logs",
+    "planned workouts",
+    "task status",
+    "habit logs",
+    "finance imports"
+  ],
+  "button_callbacks": {
+    "workout": [
+      "start",
+      "done",
+      "too_hard",
+      "change",
+      "skip"
+    ],
+    "food": [
+      "looks_right",
+      "edit_calories",
+      "add_protein",
+      "delete"
+    ]
+  }
+}

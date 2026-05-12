@@ -25,8 +25,10 @@ required_files=(
   scripts/backup.sh
   scripts/deploy-vps.sh
   scripts/render-openclaw-config.sh
+  scripts/render-openclue-contract.py
   scripts/openclaw-cron-setup.sh
   scripts/verify.sh
+  openclaw/contracts/lifeos_contract.json
   openclaw/workspace/AGENTS.md
   openclaw/workspace/skills/lifeos/SKILL.md
   services/lifeos-api/alembic/versions/0002_lifeos_v11_core.py
@@ -40,9 +42,13 @@ for path in scripts/bootstrap.sh scripts/migrate.sh scripts/seed.sh scripts/back
   [[ -x "$path" ]] || die "$path is not executable"
 done
 
+[[ -x scripts/render-openclue-contract.py ]] || die "scripts/render-openclue-contract.py is not executable"
+
 for script in scripts/bootstrap.sh scripts/migrate.sh scripts/seed.sh scripts/backup.sh scripts/deploy-vps.sh scripts/render-openclaw-config.sh scripts/openclaw-cron-setup.sh scripts/verify.sh; do
   bash -n "$script"
 done
+
+scripts/render-openclue-contract.py --check
 
 for protected_path in \
   ".env" \
@@ -65,7 +71,7 @@ grep -Fq 'openclaw-cli cron status' scripts/deploy-vps.sh || die "deploy script 
 grep -Fq 'openclaw/config/openclaw.template.json' scripts/deploy-vps.sh || die "deploy script must sync the OpenClaw config template explicitly"
 grep -Fq 'openclaw/workspace/skills/' scripts/deploy-vps.sh || die "deploy script must sync OpenClaw workspace skills explicitly"
 
-if LC_ALL=C grep -R -n '[^[:print:][:space:]]' .gitignore .env.example docker-compose.yml scripts; then
+if LC_ALL=C grep -R -n --exclude='*.pyc' --exclude-dir='__pycache__' '[^[:print:][:space:]]' .gitignore .env.example docker-compose.yml scripts; then
   die "non-ASCII or control characters detected"
 fi
 
