@@ -135,6 +135,7 @@ remote "cd '$remote_dir' && ./scripts/bootstrap.sh --prepare-only"
 remote "cd '$remote_dir' && docker compose --env-file .env build lifeos-api lifeos-migrate"
 remote "cd '$remote_dir' && ./scripts/migrate.sh"
 remote "cd '$remote_dir' && docker compose --env-file .env --profile backup up -d --build openclue-gateway lifeos-db lifeos-api lifeos-backup"
+remote "cd '$remote_dir' && docker compose --env-file .env restart openclue-gateway"
 
 remote "cd '$remote_dir' && bash -s" <<'REMOTE_CHECK'
 set -euo pipefail
