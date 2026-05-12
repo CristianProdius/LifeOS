@@ -716,6 +716,11 @@ def test_sport_today_creates_program_linked_home_workout_idempotently(tmp_path, 
     with make_client(tmp_path, monkeypatch) as client:
         first = client.post("/sport/today", json={"request_date": "2026-05-11", "location_context": "grandparents_home"})
         second = client.post("/sport/today", json={"request_date": "2026-05-11", "location_context": "grandparents_home"})
+        from lifeos_api.models import AdviceLog
+
+        with client.app.state.session_factory() as session:
+            advice = session.query(AdviceLog).filter(AdviceLog.advice_type == "sport_today").one()
+            advice_output = advice.output_payload
 
     assert first.status_code == 201
     assert second.status_code == 200
@@ -727,6 +732,7 @@ def test_sport_today_creates_program_linked_home_workout_idempotently(tmp_path, 
     names = {exercise["name"].lower() for exercise in planned["exercises"]}
     assert any("walk" in name for name in names)
     assert "romanian deadlift" not in names
+    assert "T" in advice_output["planned_workout"]["created_at"]
 
 
 def test_sport_today_gym_context_differs_from_home(tmp_path, monkeypatch):
