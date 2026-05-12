@@ -136,6 +136,23 @@ remote "cd '$remote_dir' && docker compose --env-file .env build lifeos-api life
 remote "cd '$remote_dir' && ./scripts/migrate.sh"
 remote "cd '$remote_dir' && docker compose --env-file .env --profile backup up -d --build openclue-gateway lifeos-db lifeos-api lifeos-backup"
 remote "cd '$remote_dir' && docker compose --env-file .env restart openclue-gateway"
+remote "cd '$remote_dir' && bash -s" <<'REMOTE_WAIT_GATEWAY'
+set -euo pipefail
+
+for _ in $(seq 1 30); do
+  health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' openclue-gateway 2>/dev/null || true)"
+  if [[ "$health_status" == "healthy" ]]; then
+    sleep 5
+    exit 0
+  fi
+  sleep 2
+done
+
+docker compose --env-file .env ps openclue-gateway >&2
+docker compose --env-file .env logs --tail=80 openclue-gateway >&2
+printf 'error: openclue-gateway did not become healthy after restart\n' >&2
+exit 1
+REMOTE_WAIT_GATEWAY
 
 remote "cd '$remote_dir' && bash -s" <<'REMOTE_CHECK'
 set -euo pipefail
