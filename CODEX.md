@@ -2,9 +2,9 @@
 
 ## Architecture Rule For Future Features
 
-LifeOS is a long-term personal operating system, not a throwaway bot. Do not keep appending new domain behavior to `services/lifeos-api/src/lifeos_api/main.py`.
+LifeOS is a long-term personal operating system, not a throwaway bot. Do not append domain behavior to `services/lifeos-api/src/lifeos_api/main.py`; it is only a compatibility shim that re-exports `create_app`.
 
-Current audit result: the project is functional and tested, but the API is still a V1 monolith. Before the next large feature, execute or follow the architecture hardening plan:
+Current audit result: the V1 monolith has been split into app composition, thin FastAPI routes, domain services, serializers, and versioned seed data. Continue using the architecture hardening plan as the baseline for future changes:
 
 ```text
 docs/superpowers/plans/2026-05-12-lifeos-architecture-hardening.md
@@ -19,7 +19,12 @@ serializers/<domain>.py     ORM-to-response conversion
 core/                       config, security, time, shared runtime helpers
 ```
 
-OpenClue behavior should not be copy-pasted by hand across prompts forever. The hardening plan creates a single contract source for `AGENTS.md`, the `lifeos` skill, and `openclaw.template.json`.
+OpenClue behavior is centralized in `openclaw/contracts/lifeos_contract.json`; do not copy-paste the same prompt rules by hand across `AGENTS.md`, the `lifeos` skill, and `openclaw.template.json`. After editing that contract, run:
+
+```bash
+./scripts/render-openclue-contract.py --write
+./scripts/verify.sh
+```
 
 ## OpenClaw Runtime State Must Survive Deploys
 

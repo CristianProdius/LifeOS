@@ -4,16 +4,19 @@ import base64
 import binascii
 import hashlib
 import io
+import json
 from datetime import date
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
-from lifeos_api.models import FinanceAccount, FinanceCategory, FinanceImport, UploadedFile
-from lifeos_api.schemas import FinanceImportRequest
-from lifeos_api.utils import slugify
+from lifeos_api.models import FinanceAccount, FinanceCategory, FinanceImport, FinanceTransaction, UploadedFile
+from lifeos_api.schemas import FinanceAffordabilityRequest, FinanceImportDecisionRequest, FinanceImportRequest
+from lifeos_api.serializers import finance_import_to_dict
+from lifeos_api.utils import jsonable_data, money, slugify
 
 
 class FinanceError(RuntimeError):
@@ -107,6 +110,180 @@ def rows_from_import_payload(payload: FinanceImportRequest) -> tuple[list[dict[s
     return rows, upload
 
 
+def stage_finance_import(session: Session, user_id: int, payload: FinanceImportRequest) -> dict[str, Any]:
+    rows, upload = rows_from_import_payload(payload)
+    if upload is not None:
+        maybe_store_upload(session, user_id, upload)
+
+    import_hash = hashlib.sha256(
+        json.dumps({"source": payload.source, "rows": rows}, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+    existing_import = session.scalar(select(FinanceImport).where(FinanceImport.import_hash == import_hash))
+    if existing_import is not None:
+        return {
+            "id": existing_import.id,
+            "source": existing_import.source,
+            "status": "duplicate",
+            "staged": 0,
+            "skipped": len(rows),
+            "review_items": existing_import.review_items,
+        }
+
+    review_items = []
+    for row_index, row in enumerate(rows):
+        normalized = normalize_finance_row(row)
+        normalized["row_index"] = row_index
+        normalized["external_id"] = transaction_external_id(payload.source, import_hash, row_index, normalized)
+        normalized["status"] = "pending"
+        review_items.append(jsonable_data(normalized))
+
+    import_record = FinanceImport(
+        user_id=user_id,
+        source=payload.source,
+        import_hash=import_hash,
+        status="review_pending",
+        raw_rows=jsonable_data(rows),
+        review_items=review_items,
+    )
+    session.add(import_record)
+    session.commit()
+    session.refresh(import_record)
+    return finance_import_to_dict(import_record, staged=len(review_items), skipped=0)
+
+
+def approve_finance_import(
+    session: Session,
+    user_id: int,
+    import_id: int,
+    payload: FinanceImportDecisionRequest,
+) -> dict[str, Any]:
+    import_record = get_finance_import_or_404(session, user_id, import_id)
+    selected = set(payload.row_indexes) if payload.row_indexes is not None else None
+    review_items = list(import_record.review_items or [])
+    imported = 0
+    skipped = 0
+
+    for item in review_items:
+        row_index = int(item["row_index"])
+        if selected is not None and row_index not in selected:
+            continue
+        if item.get("status") in {"approved", "rejected"}:
+            skipped += 1
+            continue
+        existing = session.scalar(
+            select(FinanceTransaction).where(FinanceTransaction.external_id == item["external_id"])
+        )
+        if existing is not None:
+            item["status"] = "duplicate"
+            skipped += 1
+            continue
+
+        account = get_or_create_account(session, user_id, item["account"], item["currency"])
+        category = get_or_create_category(session, user_id, item["category"], float(item["amount"]))
+        session.add(
+            FinanceTransaction(
+                user_id=user_id,
+                account_id=account.id,
+                category_id=category.id,
+                import_id=import_record.id,
+                transaction_date=coerce_date(item["date"]),
+                description=item["description"],
+                amount=float(item["amount"]),
+                currency=item["currency"],
+                external_id=item["external_id"],
+            )
+        )
+        item["status"] = "approved"
+        imported += 1
+
+    import_record.review_items = review_items
+    flag_modified(import_record, "review_items")
+    import_record.imported_count += imported
+    import_record.status = finance_import_status(review_items)
+    session.commit()
+    session.refresh(import_record)
+    return finance_import_to_dict(import_record, imported=imported, skipped=skipped)
+
+
+def reject_finance_import(
+    session: Session,
+    user_id: int,
+    import_id: int,
+    payload: FinanceImportDecisionRequest,
+) -> dict[str, Any]:
+    import_record = get_finance_import_or_404(session, user_id, import_id)
+    selected = set(payload.row_indexes) if payload.row_indexes is not None else None
+    review_items = list(import_record.review_items or [])
+    rejected = 0
+    for item in review_items:
+        row_index = int(item["row_index"])
+        if selected is not None and row_index not in selected:
+            continue
+        if item.get("status") == "pending":
+            item["status"] = "rejected"
+            rejected += 1
+    import_record.review_items = review_items
+    flag_modified(import_record, "review_items")
+    import_record.status = finance_import_status(review_items)
+    session.commit()
+    session.refresh(import_record)
+    return finance_import_to_dict(import_record, rejected=rejected)
+
+
+def finance_summary(session: Session, user_id: int) -> dict[str, Any]:
+    transactions = session.scalars(select(FinanceTransaction).where(FinanceTransaction.user_id == user_id)).all()
+    income = money(sum(tx.amount for tx in transactions if tx.amount > 0))
+    expenses = money(abs(sum(tx.amount for tx in transactions if tx.amount < 0)))
+    net = money(income - expenses)
+
+    category_rows = session.execute(
+        select(FinanceCategory.name, func.sum(FinanceTransaction.amount))
+        .join(FinanceTransaction, FinanceTransaction.category_id == FinanceCategory.id)
+        .where(FinanceTransaction.user_id == user_id)
+        .group_by(FinanceCategory.name)
+        .order_by(FinanceCategory.name)
+    ).all()
+    accounts = session.scalars(
+        select(FinanceAccount).where(FinanceAccount.user_id == user_id).order_by(FinanceAccount.name)
+    ).all()
+
+    return {
+        "income": income,
+        "expenses": expenses,
+        "net": net,
+        "by_category": [{"category": name, "amount": money(amount or 0)} for name, amount in category_rows],
+        "accounts": [
+            {
+                "name": account.name,
+                "posted_balance": money(account.balance),
+                "currency": account.currency,
+                "balance_source": "manual_or_bank_reported",
+            }
+            for account in accounts
+        ],
+    }
+
+
+def finance_affordability(payload: FinanceAffordabilityRequest) -> dict[str, Any]:
+    remaining_needed = max(payload.purchase_amount - payload.current_savings, 0)
+    monthly_savings_needed = money(remaining_needed / payload.months)
+    monthly_surplus = money(payload.monthly_income - payload.monthly_expenses)
+    projected_remaining = money((monthly_surplus * payload.months) + payload.current_savings - payload.purchase_amount)
+    affordable = monthly_savings_needed <= monthly_surplus
+    recommendation = (
+        "Affordable within the requested timeline."
+        if affordable
+        else "Delay, reduce scope, or increase monthly surplus before buying."
+    )
+    return {
+        "affordable": affordable,
+        "monthly_savings_needed": monthly_savings_needed,
+        "monthly_surplus": monthly_surplus,
+        "projected_remaining": projected_remaining,
+        "recommendation": recommendation,
+    }
+
+
 def maybe_store_upload(session: Session, user_id: int, upload: dict[str, Any]) -> None:
     existing = session.scalar(select(UploadedFile).where(UploadedFile.sha256 == upload["sha256"]))
     if existing is None:
@@ -157,7 +334,9 @@ def transaction_external_id(source: str, import_hash: str, row_index: int, norma
 
 
 def get_or_create_account(session: Session, user_id: int, account_name: str, currency: str = "USD") -> FinanceAccount:
-    account = session.scalar(select(FinanceAccount).where(FinanceAccount.user_id == user_id, FinanceAccount.name == account_name))
+    account = session.scalar(
+        select(FinanceAccount).where(FinanceAccount.user_id == user_id, FinanceAccount.name == account_name)
+    )
     if account is None:
         account = FinanceAccount(user_id=user_id, name=account_name, currency=currency)
         session.add(account)
@@ -182,7 +361,9 @@ def get_or_create_category(session: Session, user_id: int, category_slug: str, a
 
 
 def get_finance_import_or_404(session: Session, user_id: int, import_id: int) -> FinanceImport:
-    import_record = session.scalar(select(FinanceImport).where(FinanceImport.id == import_id, FinanceImport.user_id == user_id))
+    import_record = session.scalar(
+        select(FinanceImport).where(FinanceImport.id == import_id, FinanceImport.user_id == user_id)
+    )
     if import_record is None:
         raise FinanceImportNotFoundError()
     return import_record
