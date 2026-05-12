@@ -67,7 +67,11 @@ Also verify reminder jobs after deploy:
 
 ```bash
 cd /opt/lifeos
-docker compose --env-file .env run --rm --no-deps openclaw-cli cron status
+gateway_token="$(grep '^OPENCLAW_GATEWAY_TOKEN=' .env | cut -d= -f2-)"
+docker compose --env-file .env run --rm --no-deps \
+  -e OPENCLAW_STATE_DIR=/tmp/openclaw-admin-state \
+  -e OPENCLAW_CONFIG_PATH=/home/node/.openclaw/openclaw.json \
+  openclaw-cli cron status --token "$gateway_token"
 ```
 
 Expected result: `jobs` is `5`. If it is `0`, run:

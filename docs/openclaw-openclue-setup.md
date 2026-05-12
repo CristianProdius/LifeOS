@@ -280,7 +280,11 @@ Also verify reminder jobs:
 
 ```bash
 cd /opt/lifeos
-docker compose --env-file .env run --rm --no-deps openclaw-cli cron status
+gateway_token="$(grep '^OPENCLAW_GATEWAY_TOKEN=' .env | cut -d= -f2-)"
+docker compose --env-file .env run --rm --no-deps \
+  -e OPENCLAW_STATE_DIR=/tmp/openclaw-admin-state \
+  -e OPENCLAW_CONFIG_PATH=/home/node/.openclaw/openclaw.json \
+  openclaw-cli cron status --token "$gateway_token"
 ```
 
 Expected: `jobs` is `5`. If `jobs` is `0`, reinstall the reminder jobs:
