@@ -1,5 +1,26 @@
 # Codex Project Notes
 
+## Architecture Rule For Future Features
+
+LifeOS is a long-term personal operating system, not a throwaway bot. Do not keep appending new domain behavior to `services/lifeos-api/src/lifeos_api/main.py`.
+
+Current audit result: the project is functional and tested, but the API is still a V1 monolith. Before the next large feature, execute or follow the architecture hardening plan:
+
+```text
+docs/superpowers/plans/2026-05-12-lifeos-architecture-hardening.md
+```
+
+New API work should have a clear home:
+
+```text
+api/routes/<domain>.py      thin FastAPI routes
+domain/<domain>.py          business logic and database writes
+serializers/<domain>.py     ORM-to-response conversion
+core/                       config, security, time, shared runtime helpers
+```
+
+OpenClue behavior should not be copy-pasted by hand across prompts forever. The hardening plan creates a single contract source for `AGENTS.md`, the `lifeos` skill, and `openclaw.template.json`.
+
 ## OpenClaw Runtime State Must Survive Deploys
 
 Do not delete or overwrite OpenClaw runtime state on the VPS.
