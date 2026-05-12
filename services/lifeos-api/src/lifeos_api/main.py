@@ -3,22 +3,22 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
-import hmac
 import io
 import json
 import os
-from collections.abc import Iterator
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
 
+from lifeos_api.api.deps import get_session
+from lifeos_api.core.security import require_api_key
+from lifeos_api.core.time import LIFEOS_DEFAULT_TIMEZONE, lifeos_today
 from lifeos_api.database import create_engine_and_session, get_database_url, init_database
 from lifeos_api.models import (
     AdviceLog,
@@ -82,9 +82,6 @@ from lifeos_api.schemas import (
 from lifeos_api.seed import PERSONALIZATION_SEED, ensure_area, get_or_create_user, seed_reset_plan, seed_sport_program
 from lifeos_api.utils import money, slugify
 
-
-LIFEOS_DEFAULT_TIMEZONE = "Europe/Chisinau"
-
 DEFAULT_PROFILE = {
     "timezone": LIFEOS_DEFAULT_TIMEZONE,
     "default_context": "grandparents_home",
@@ -141,10 +138,6 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.seeded = seeded
-
-    def get_session() -> Iterator[Session]:
-        with session_factory() as session:
-            yield session
 
     @app.get("/health", response_model=HealthResponse)
     def health(session: Session = Depends(get_session)) -> dict[str, Any]:
@@ -883,43 +876,6 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
     return app
 
 
-async def require_api_key(
-    request: Request,
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-    authorization: str | None = Header(default=None, alias="Authorization"),
-    x_shortcut_token: str | None = Header(default=None, alias="X-Shortcut-Token"),
-) -> None:
-    if request.url.path.startswith("/integrations/shortcuts/"):
-        require_shortcut_token(authorization=authorization, x_shortcut_token=x_shortcut_token)
-        return
-
-    expected = os.getenv("LIFEOS_API_KEY")
-    allow_anonymous = os.getenv("LIFEOS_ALLOW_ANONYMOUS", "").lower() in {"1", "true", "yes"}
-    if not expected and not allow_anonymous:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="api key is not configured")
-    if expected and not hmac.compare_digest(x_api_key or "", expected):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid API key")
-
-
-def require_shortcut_token(*, authorization: str | None, x_shortcut_token: str | None) -> None:
-    expected = os.getenv("LIFEOS_SHORTCUT_TOKEN")
-    if not expected:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="shortcut token is not configured")
-
-    supplied = x_shortcut_token or bearer_token(authorization)
-    if not supplied or not hmac.compare_digest(supplied, expected):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid shortcut token")
-
-
-def bearer_token(authorization: str | None) -> str | None:
-    if not authorization:
-        return None
-    scheme, separator, token = authorization.partition(" ")
-    if separator and scheme.lower() == "bearer" and token.strip():
-        return token.strip()
-    return None
-
-
 def upsert_health_summary(payload: HealthDailySummaryUpsert, response: Response, session: Session) -> dict[str, Any]:
     user, _ = get_or_create_user(session)
     summary = session.scalar(
@@ -1319,14 +1275,6 @@ def context_personalization(area_slug: str, settings: dict[str, dict[str, Any]])
         "health": ["sport", "food", "daily", "coaching"],
     }
     return {domain: settings[domain] for domain in domains_by_area.get(area_slug, []) if domain in settings}
-
-
-def lifeos_today(timezone_name: str | None = None) -> date:
-    try:
-        timezone = ZoneInfo(timezone_name or LIFEOS_DEFAULT_TIMEZONE)
-    except ZoneInfoNotFoundError:
-        timezone = ZoneInfo(LIFEOS_DEFAULT_TIMEZONE)
-    return datetime.now(timezone).date()
 
 
 def sport_program_context(session: Session, user_id: int, reference_date: date | None = None) -> dict[str, Any]:
