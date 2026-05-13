@@ -179,6 +179,13 @@ class FoodLogUpdate(StrictModel):
     items: list[FoodLogItemPayload] | None = Field(default=None, max_length=50)
 
 
+class TelegramActionRequest(StrictModel):
+    callback_data: str = Field(min_length=1)
+    action_date: date | None = None
+    value: int | float | str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class FoodDailyReviewCreate(StrictModel):
     review_date: date
     hunger: int | None = Field(default=None, ge=1, le=10)
@@ -212,6 +219,11 @@ class FinanceAffordabilityRequest(StrictModel):
 class DailyPlanRequest(StrictModel):
     plan_date: date
     focus_area: str | None = Field(default=None, max_length=80)
+    capacity_minutes: int = Field(default=120, ge=15, le=720)
+
+
+class DailyCommandCenterRequest(StrictModel):
+    plan_date: date
     capacity_minutes: int = Field(default=120, ge=15, le=720)
 
 

@@ -109,7 +109,7 @@ add_job \
   "35 6 * * *" \
   "$daily_topic_id" \
   "06:35 readiness, sleep, blockers, and top constraint." \
-  "OpenClue 06:35 wake check. Query LifeOS first for today's plan, habits, tasks, and workout state. Post a concise Daily-topic check-in asking whether Cristian is out of bed, sleep quality, readiness, and the one blocker. Never invent completed habits." \
+  "OpenClue 06:35 wake check. Query LifeOS first for today's plan, habits, tasks, and workout state. Post a concise Daily-topic check-in asking whether Cristian is out of bed, sleep quality, readiness, and the one blocker. Never invent completed habits. For any button callback, submit Telegram callback values unchanged to POST /telegram/actions." \
   "$group_id" \
   "$timezone"
 
@@ -118,7 +118,7 @@ add_job \
   "0 7 * * *" \
   "$daily_topic_id" \
   "07:00 daily plan proposal or confirmation." \
-  "OpenClue 07:00 daily plan. Query LifeOS first, then propose four mandatory tasks for today: one health action, one business deliverable, one anti-distraction guardrail, and one admin/review item. Keep it specific and ask for accept/revise." \
+  "OpenClue 07:00 daily plan. Call POST /daily/command-center, then render the returned four mandatory commitments: one health action, one business deliverable, one anti-distraction guardrail, and one admin/review item. Use the returned buttons. For any button callback, submit Telegram callback values unchanged to POST /telegram/actions." \
   "$group_id" \
   "$timezone"
 

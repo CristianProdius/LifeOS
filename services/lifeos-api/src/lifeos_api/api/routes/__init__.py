@@ -10,6 +10,7 @@ from lifeos_api.api.routes import (
     reviews,
     sport,
     tasks,
+    telegram_actions,
     workouts,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "reviews",
     "sport",
     "tasks",
+    "telegram_actions",
     "workouts",
 ]

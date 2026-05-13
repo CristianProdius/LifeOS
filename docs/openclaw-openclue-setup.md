@@ -131,14 +131,14 @@ On the VPS, keep both `OPENCLAW_TZ` and `OPENCLAW_TIMEZONE` set to `Europe/Chisi
 
 At 06:35, OpenClue posts in Daily after reading LifeOS plans, tasks, habits, and workouts. The message should ask for readiness, sleep quality, blockers, and the main constraint for the day.
 
-At 07:00, OpenClue reads LifeOS again, then proposes the daily plan. The plan should include the smallest useful set of commitments:
+At 07:00, OpenClue calls `POST /daily/command-center`, then renders the returned Daily Command Center. The command center returns exactly four mandatory commitments:
 
-- One primary focus.
-- One fallback action.
-- Habit and workout checks grounded in LifeOS state.
-- Buttons for accept, revise, snooze, and mark blocked.
+- One health action.
+- One business deliverable.
+- One anti-distraction guardrail.
+- One admin/review action.
 
-When the user presses a button, OpenClue updates LifeOS first, re-queries the changed state, then acknowledges the result in Daily or the owning topic.
+When the user presses a button, OpenClue submits Telegram callback values unchanged to `POST /telegram/actions` with the available Telegram metadata. LifeOS updates durable state first and returns the acknowledgement OpenClue should render in Daily or the owning topic.
 
 ## Sport Workout Flow
 
@@ -148,7 +148,7 @@ Sport recommendations must be stored before OpenClue presents them as today's pl
 2. OpenClue calls `POST /sport/today`.
 3. LifeOS creates or reuses a program-linked `planned_workout`.
 4. OpenClue sends the returned workout visibly in Sport with inline buttons.
-5. Button callbacks update LifeOS first, then OpenClue re-queries and acknowledges in Sport.
+5. Button callbacks are submitted unchanged to `POST /telegram/actions`; LifeOS updates state first, then OpenClue renders the returned acknowledgement in Sport.
 
 For progress questions, OpenClue calls `GET /sport/progress`. For missed training days, OpenClue calls `POST /sport/missed-day`. `POST /workouts/plan` remains available for low-level/manual workout planning, but normal Telegram Sport workout generation should use the Sport Program Engine.
 
@@ -166,7 +166,7 @@ lifeos:workout:{plan_id}:change
 lifeos:workout:{plan_id}:skip
 ```
 
-Daily task buttons should use the same LifeOS-first rule with deterministic values such as `lifeos:task:{task_id}:done`, `lifeos:task:{task_id}:block`, and `lifeos:task:{task_id}:snooze_tomorrow`.
+Daily task buttons should use the same LifeOS-first rule with deterministic values such as `lifeos:task:{task_id}:done`, `lifeos:task:{task_id}:block`, and `lifeos:task:{task_id}:snooze_tomorrow`. Submit those values unchanged to `POST /telegram/actions`.
 
 ## Food Calorie And Protein Flow
 

@@ -16,6 +16,7 @@ from lifeos_api.api.routes import (
     reviews,
     sport,
     tasks,
+    telegram_actions,
     workouts,
 )
 from lifeos_api.core.security import require_api_key
@@ -60,6 +61,7 @@ def create_app(database_url: str | None = None, seed_database: bool = True) -> F
     app.include_router(tasks.router)
     app.include_router(habits.router)
     app.include_router(checkins.router)
+    app.include_router(telegram_actions.router)
 
     return app
 

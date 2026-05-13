@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from lifeos_api.models import PlannedWorkout
+from lifeos_api.models import PlannedWorkout, WorkoutExercise, WorkoutSession
 from lifeos_api.schemas import WorkoutRecommendationRequest
 from lifeos_api.utils import slugify
 
@@ -166,4 +166,32 @@ def get_planned_workout_or_404(session: Session, user_id: int, plan_id: int) -> 
     plan = session.scalar(select(PlannedWorkout).where(PlannedWorkout.id == plan_id, PlannedWorkout.user_id == user_id))
     if plan is None:
         raise PlannedWorkoutNotFoundError(plan_id)
+    return plan
+
+
+def complete_planned_workout(
+    session: Session,
+    user_id: int,
+    plan: PlannedWorkout,
+    *,
+    notes: str | None = None,
+) -> PlannedWorkout:
+    if plan.completed_workout_id is None:
+        workout = WorkoutSession(
+            user_id=user_id,
+            session_date=plan.plan_date,
+            workout_type=plan.goal,
+            duration_minutes=plan.duration_minutes,
+            intensity=plan.intensity,
+            notes=notes or plan.notes,
+        )
+        workout.exercises = [
+            WorkoutExercise(**exercise_payload_from_plan(exercise)) for exercise in plan.exercises
+        ]
+        session.add(workout)
+        session.flush()
+        plan.completed_workout_id = workout.id
+    if notes:
+        plan.notes = notes
+    plan.status = "completed"
     return plan

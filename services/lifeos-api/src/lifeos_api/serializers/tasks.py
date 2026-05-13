@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from lifeos_api.models import Area, Checkin, HabitDefinition, HabitLog, Task
+
+
+def utc_datetime(value: datetime | None) -> datetime | None:
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=timezone.utc)
 
 
 def area_to_dict(area: Area) -> dict[str, Any]:
@@ -17,6 +24,7 @@ def task_to_dict(task: Task) -> dict[str, Any]:
         "status": task.status,
         "priority": task.priority,
         "due_date": task.due_date,
+        "completed_at": utc_datetime(task.completed_at),
         "notes": task.notes,
         "created_at": task.created_at,
         "updated_at": task.updated_at,

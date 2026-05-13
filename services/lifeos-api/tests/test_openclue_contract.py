@@ -134,3 +134,17 @@ def test_openclue_prompts_reference_food_calorie_protein_engine():
     assert "Edit calories" in config
     assert "Add protein" in config
     assert "Delete" in config
+
+
+def test_openclue_prompts_reference_deterministic_actions_and_command_center():
+    repo_root = Path(__file__).resolve().parents[3]
+    agents = (repo_root / "openclaw/workspace/AGENTS.md").read_text()
+    skill = (repo_root / "openclaw/workspace/skills/lifeos/SKILL.md").read_text()
+    config = (repo_root / "openclaw/config/openclaw.template.json").read_text()
+    setup_docs = (repo_root / "docs/openclaw-openclue-setup.md").read_text()
+
+    for text in [agents, skill, config, setup_docs]:
+        assert "/telegram/actions" in text
+        assert "/daily/command-center" in text
+    for text in [agents, skill, config]:
+        assert "submit Telegram callback values unchanged" in text

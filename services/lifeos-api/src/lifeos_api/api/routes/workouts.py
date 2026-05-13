@@ -13,7 +13,7 @@ from lifeos_api.domain.workouts import (
     PlannedWorkoutNotFoundError,
     build_planned_workout,
     build_workout_recommendation,
-    exercise_payload_from_plan,
+    complete_planned_workout,
     get_planned_workout_or_404,
 )
 from lifeos_api.models import AdviceLog, PlannedWorkout, WorkoutExercise, WorkoutSession
@@ -157,24 +157,7 @@ def complete_workout_plan(
         plan = get_planned_workout_or_404(session, user.id, plan_id)
     except PlannedWorkoutNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="planned workout not found") from exc
-    if plan.completed_workout_id is None:
-        workout = WorkoutSession(
-            user_id=user.id,
-            session_date=plan.plan_date,
-            workout_type=plan.goal,
-            duration_minutes=plan.duration_minutes,
-            intensity=plan.intensity,
-            notes=payload.notes or plan.notes,
-        )
-        workout.exercises = [
-            WorkoutExercise(**exercise_payload_from_plan(exercise)) for exercise in plan.exercises
-        ]
-        session.add(workout)
-        session.flush()
-        plan.completed_workout_id = workout.id
-    if payload.notes:
-        plan.notes = payload.notes
-    plan.status = "completed"
+    complete_planned_workout(session, user.id, plan, notes=payload.notes)
     session.commit()
     session.refresh(plan)
     return planned_workout_to_dict(plan)
