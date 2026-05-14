@@ -138,7 +138,7 @@ At 07:00, OpenClue calls `POST /daily/command-center`, then renders the returned
 - One anti-distraction guardrail.
 - One admin/review action.
 
-When the user presses a button, OpenClue submits Telegram callback values unchanged to `POST /telegram/actions` with the available Telegram metadata. LifeOS updates durable state first and returns the acknowledgement OpenClue should render in Daily or the owning topic.
+When the user presses a button, OpenClue submits Telegram callback values unchanged to `POST /telegram/actions` with the available Telegram metadata. LifeOS updates durable state first and returns the acknowledgement OpenClue should render in Daily or the owning topic. If the response has `suppress_visible_reply: true`, OpenClue should not post another visible chat message because the callback was already applied or replayed.
 
 ## Sport Workout Flow
 

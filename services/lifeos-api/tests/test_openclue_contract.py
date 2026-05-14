@@ -148,3 +148,4 @@ def test_openclue_prompts_reference_deterministic_actions_and_command_center():
         assert "/daily/command-center" in text
     for text in [agents, skill, config]:
         assert "submit Telegram callback values unchanged" in text
+        assert "suppress_visible_reply" in text

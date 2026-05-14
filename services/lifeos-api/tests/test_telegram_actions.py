@@ -53,6 +53,39 @@ def test_food_action_buttons_confirm_patch_and_delete_logs(tmp_path, make_client
     assert summary.json()["totals"]["calories"] == 0
 
 
+def test_repeated_food_confirm_suppresses_visible_reply(tmp_path, make_client):
+    with make_client(tmp_path) as client:
+        food_log_id = client.post(
+            "/food/logs",
+            json={
+                "log_date": "2026-05-12",
+                "meal_type": "add-on",
+                "source": "telegram_text",
+                "description": "Honey, 12 g",
+                "calories": 36,
+                "protein_g": 0,
+                "confidence": "estimated",
+            },
+        ).json()["id"]
+
+        first = client.post(
+            "/telegram/actions",
+            json={"callback_data": f"lifeos:food:{food_log_id}:looks_right"},
+        )
+        second = client.post(
+            "/telegram/actions",
+            json={"callback_data": f"lifeos:food:{food_log_id}:looks_right"},
+        )
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "saved"
+    assert first.json()["suppress_visible_reply"] is False
+    assert second.status_code == 200
+    assert second.json()["status"] == "already_applied"
+    assert second.json()["suppress_visible_reply"] is True
+    assert second.json()["acknowledgement"] == "Already confirmed."
+
+
 def test_food_action_buttons_can_request_missing_correction_value(tmp_path, make_client):
     with make_client(tmp_path) as client:
         food_log_id = client.post(

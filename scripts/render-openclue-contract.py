@@ -89,6 +89,7 @@ def render_markdown(contract: dict) -> str:
             "",
             "### Deterministic Runtime Actions",
             f"- For Telegram button callbacks, submit Telegram callback values unchanged to `{contract['telegram_action_endpoint']}` with available Telegram metadata.",
+            "- If the action response has `suppress_visible_reply: true`, do not send a visible Telegram message; treat it as a duplicate/idempotent callback.",
             f"- For morning planning, call `{contract['daily_command_center_endpoint']}` and render the returned four mandatory commitments.",
         ]
     )
@@ -142,7 +143,7 @@ def render_system_prompt(contract: dict) -> str:
         f"Required LifeOS contract endpoints by domain: {read_summary}. Match each endpoint to the user intent; mutating endpoints are not generic reads.",
         f"Write to LifeOS before claiming these durable actions exist: {write_items}.",
         f"Supported button callback actions: {callback_summary}.",
-        f"For Telegram button callbacks, submit Telegram callback values unchanged to POST {action_endpoint} with available Telegram metadata; render the returned acknowledgement instead of hand-routing callback actions.",
+        f"For Telegram button callbacks, submit Telegram callback values unchanged to POST {action_endpoint} with available Telegram metadata; if the action response has suppress_visible_reply=true, do not send a visible Telegram message because it is a duplicate/idempotent callback; otherwise render the returned acknowledgement instead of hand-routing callback actions.",
         f"For morning planning and daily four-commitment plans, call POST {command_center_endpoint}; render the returned mandatory commitments and buttons.",
         "For direct health, weight, BMI, body fat, steps, active energy, or heart-rate questions, query /context/health first and only query other contexts if the answer needs training, food, or daily task state.",
         "For Sport, Food, and Daily advice, use health_progress and personalization from the relevant context; Do not overreact to one bad day, and do not invent trends when data_quality.has_trend is false.",
