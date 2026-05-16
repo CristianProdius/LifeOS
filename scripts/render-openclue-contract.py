@@ -69,6 +69,8 @@ def render_markdown(contract: dict) -> str:
         f"- Source of truth: {contract['source_of_truth']}",
         "- Forbidden tools: " + ", ".join(f"`{tool}`" for tool in contract["forbidden_tools"]),
         f"- Telegram action endpoint: `{contract['telegram_action_endpoint']}`",
+        f"- Telegram callback data format: `{contract['callback_data_format']}`",
+        f"- Food callback example: `{contract['food_callback_example']}`",
         f"- Daily command center endpoint: `{contract['daily_command_center_endpoint']}`",
         "",
         "### Required Contract Endpoints",
@@ -89,6 +91,7 @@ def render_markdown(contract: dict) -> str:
             "",
             "### Deterministic Runtime Actions",
             f"- For Telegram button callbacks, submit Telegram callback values unchanged to `{contract['telegram_action_endpoint']}` with available Telegram metadata.",
+            f"- Generate button callback values with `{contract['callback_data_format']}`; for food confirmation use `{contract['food_callback_example']}`.",
             "- If the action response has `suppress_visible_reply: true`, do not send a visible Telegram message; treat it as a duplicate/idempotent callback.",
             f"- For morning planning, call `{contract['daily_command_center_endpoint']}` and render the returned four mandatory commitments.",
         ]
@@ -125,6 +128,8 @@ def render_system_prompt(contract: dict) -> str:
     write_items = ", ".join(contract["write_before_claiming"])
     forbidden = ", ".join(contract["forbidden_tools"])
     action_endpoint = contract["telegram_action_endpoint"]
+    callback_data_format = contract["callback_data_format"]
+    food_callback_example = contract["food_callback_example"]
     command_center_endpoint = contract["daily_command_center_endpoint"]
     read_summary = "; ".join(
         f"{domain}: {plain_route_list(routes, endpoint_notes)}" for domain, routes in reads.items()
@@ -143,6 +148,7 @@ def render_system_prompt(contract: dict) -> str:
         f"Required LifeOS contract endpoints by domain: {read_summary}. Match each endpoint to the user intent; mutating endpoints are not generic reads.",
         f"Write to LifeOS before claiming these durable actions exist: {write_items}.",
         f"Supported button callback actions: {callback_summary}.",
+        f"Generate Telegram button callback values with exact format {callback_data_format}; for food confirmation use {food_callback_example}, not food:looks_right:{{food_log_id}}.",
         f"For Telegram button callbacks, submit Telegram callback values unchanged to POST {action_endpoint} with available Telegram metadata; if the action response has suppress_visible_reply=true, do not send a visible Telegram message because it is a duplicate/idempotent callback; otherwise render the returned acknowledgement instead of hand-routing callback actions.",
         f"For morning planning and daily four-commitment plans, call POST {command_center_endpoint}; render the returned mandatory commitments and buttons.",
         "For direct health, weight, BMI, body fat, steps, active energy, or heart-rate questions, query /context/health first and only query other contexts if the answer needs training, food, or daily task state.",
@@ -150,7 +156,7 @@ def render_system_prompt(contract: dict) -> str:
         "For Food, query /context/food, /food/target, /food/daily-summary, and /food/progress before calorie/protein advice; the V1 target is 1900 kcal and 150 g protein.",
         "If logging food, call POST /food/logs before claiming it is tracked.",
         "Never treat missing food logs as zero calories.",
-        f"Food log replies should include {food_buttons} buttons using message.presentation.blocks.",
+        f"Food log replies should include {food_buttons} buttons using message.presentation.blocks with callback values like {food_callback_example}.",
         "For Sport workout recommendations, call POST /sport/today and send the returned planned_workout with Telegram buttons using message.presentation.blocks.",
         f"Sport workout replies should include {workout_buttons} buttons.",
         "For Sport progress or goal questions, call GET /sport/progress.",

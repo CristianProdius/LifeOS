@@ -109,7 +109,7 @@ Topic ownership:
 - Review: weekly planning, daily reviews, goals, projects, commitments, and strategy.
 - Admin: setup, config, API errors, deployment, logs, credentials, and coding.
 
-OpenClue is configured with `messages.groupChat.visibleReplies: "automatic"` so normal assistant final replies are posted visibly in Telegram forum topics. Without this, OpenClaw group rooms may process the message privately unless the model explicitly calls the message tool.
+OpenClue is configured with `messages.groupChat.visibleReplies: "message_tool"` so Telegram forum output is sent only through explicit `message` tool calls. This prevents raw assistant progress or tool traces from being posted as visible chat replies.
 
 ## Cron Reminders
 

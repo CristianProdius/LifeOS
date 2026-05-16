@@ -86,6 +86,31 @@ def test_repeated_food_confirm_suppresses_visible_reply(tmp_path, make_client):
     assert second.json()["acknowledgement"] == "Already confirmed."
 
 
+def test_openclue_legacy_food_callback_order_is_accepted(tmp_path, make_client):
+    with make_client(tmp_path) as client:
+        food_log_id = client.post(
+            "/food/logs",
+            json={
+                "log_date": "2026-05-16",
+                "meal_type": "snack",
+                "source": "telegram_text",
+                "description": "1 boiled egg white",
+                "calories": 17,
+                "protein_g": 4,
+                "confidence": "estimated",
+            },
+        ).json()["id"]
+
+        response = client.post(
+            "/telegram/actions",
+            json={"callback_data": f"food:looks_right:{food_log_id}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "saved"
+    assert response.json()["resource"]["confidence"] == "confirmed_estimate"
+
+
 def test_food_action_buttons_can_request_missing_correction_value(tmp_path, make_client):
     with make_client(tmp_path) as client:
         food_log_id = client.post(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -149,3 +150,24 @@ def test_openclue_prompts_reference_deterministic_actions_and_command_center():
     for text in [agents, skill, config]:
         assert "submit Telegram callback values unchanged" in text
         assert "suppress_visible_reply" in text
+        assert "lifeos:<kind>:<resource_id>:<action>" in text
+        assert "lifeos:food:{food_log_id}:looks_right" in text
+
+
+def test_openclue_group_replies_use_message_tool_visibility():
+    repo_root = Path(__file__).resolve().parents[3]
+    config = (repo_root / "openclaw/config/openclaw.template.json").read_text()
+    setup_docs = (repo_root / "docs/openclaw-openclue-setup.md").read_text()
+
+    assert '"visibleReplies": "message_tool"' in config
+    assert 'messages.groupChat.visibleReplies: "message_tool"' in setup_docs
+
+
+def test_food_topic_prompt_uses_canonical_button_callback_values():
+    repo_root = Path(__file__).resolve().parents[3]
+    config = json.loads((repo_root / "openclaw/config/openclaw.template.json").read_text())
+    food_prompt = config["channels"]["telegram"]["groups"]["${TELEGRAM_ALLOWED_GROUP_ID}"]["topics"][
+        "${TELEGRAM_TOPIC_FOOD_ID}"
+    ]["systemPrompt"]
+
+    assert "lifeos:food:{food_log_id}:looks_right" in food_prompt

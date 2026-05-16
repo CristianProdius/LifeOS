@@ -29,6 +29,8 @@
     ]
   },
   "telegram_action_endpoint": "/telegram/actions",
+  "callback_data_format": "lifeos:<kind>:<resource_id>:<action>",
+  "food_callback_example": "lifeos:food:{food_log_id}:looks_right",
   "daily_command_center_endpoint": "/daily/command-center",
   "endpoint_notes": {
     "/sport/today": "POST only for workout recommendation flows. It creates or reuses today's planned workout, so do not call it for general Sport questions like soreness, adherence, progress, or weight.",

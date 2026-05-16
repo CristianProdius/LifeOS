@@ -40,13 +40,19 @@ class TelegramCallback:
 
 def parse_callback_data(callback_data: str) -> TelegramCallback:
     parts = callback_data.split(":")
-    if len(parts) != 4 or parts[0] != "lifeos" or not parts[1] or not parts[2] or not parts[3]:
-        raise InvalidCallbackDataError(callback_data)
-    try:
-        resource_id = int(parts[2])
-    except ValueError as exc:
-        raise InvalidCallbackDataError(callback_data) from exc
-    return TelegramCallback(kind=parts[1], resource_id=resource_id, action=parts[3])
+    if len(parts) == 4 and parts[0] == "lifeos" and parts[1] and parts[2] and parts[3]:
+        try:
+            resource_id = int(parts[2])
+        except ValueError as exc:
+            raise InvalidCallbackDataError(callback_data) from exc
+        return TelegramCallback(kind=parts[1], resource_id=resource_id, action=parts[3])
+    if len(parts) == 3 and parts[0] and parts[1] and parts[2]:
+        try:
+            resource_id = int(parts[2])
+        except ValueError as exc:
+            raise InvalidCallbackDataError(callback_data) from exc
+        return TelegramCallback(kind=parts[0], resource_id=resource_id, action=parts[1])
+    raise InvalidCallbackDataError(callback_data)
 
 
 def apply_telegram_action(

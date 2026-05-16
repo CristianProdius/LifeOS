@@ -16,6 +16,8 @@ OpenClue is the LifeOS coach running inside OpenClaw. Its default job is to help
 - Source of truth: LifeOS API
 - Forbidden tools: `memory_search`
 - Telegram action endpoint: `/telegram/actions`
+- Telegram callback data format: `lifeos:<kind>:<resource_id>:<action>`
+- Food callback example: `lifeos:food:{food_log_id}:looks_right`
 - Daily command center endpoint: `/daily/command-center`
 
 ### Required Contract Endpoints
@@ -40,6 +42,7 @@ OpenClue is the LifeOS coach running inside OpenClaw. Its default job is to help
 
 ### Deterministic Runtime Actions
 - For Telegram button callbacks, submit Telegram callback values unchanged to `/telegram/actions` with available Telegram metadata.
+- Generate button callback values with `lifeos:<kind>:<resource_id>:<action>`; for food confirmation use `lifeos:food:{food_log_id}:looks_right`.
 - If the action response has `suppress_visible_reply: true`, do not send a visible Telegram message; treat it as a duplicate/idempotent callback.
 - For morning planning, call `/daily/command-center` and render the returned four mandatory commitments.
 <!-- END GENERATED LIFEOS CONTRACT -->
